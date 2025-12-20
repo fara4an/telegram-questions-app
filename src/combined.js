@@ -36,3 +36,5 @@ app.listen(PORT, async () => {
     console.log('🤖 Telegram бот запущен');
     console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
 });
+
+
