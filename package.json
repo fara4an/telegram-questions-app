@@ -1,12 +1,9 @@
 {
   "name": "telegram-questions-app",
   "version": "1.0.0",
-  "description": "Telegram Mini App for anonymous questions",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "bot": "node src/bot.js",
-    "dev": "nodemon src/server.js"
+    "start": "node src/server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -14,11 +11,5 @@
     "pg": "^8.11.3",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "keywords": ["telegram", "bot", "mini-app"],
-  "author": "Your Name",
-  "license": "MIT"
+  }
 }
