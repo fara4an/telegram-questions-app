@@ -64,6 +64,66 @@
                 initDemoMode();
             }
         }
+
+        // ========== ОТЛАДОЧНЫЙ РЕЖИМ ==========
+function enableDebugMode() {
+    console.log('=== DEBUG MODE ENABLED ===');
+    
+    // Принудительно показываем демо-данные
+    loadDemoData();
+    
+    // Показываем отладочную информацию
+    document.getElementById('questions-list').innerHTML = `
+        <div class="card" style="border-left-color: #667eea;">
+            <h3>🔍 Отладочная информация</h3>
+            <p><strong>User ID:</strong> ${userId}</p>
+            <p><strong>Username:</strong> ${username}</p>
+            <p><strong>Telegram:</strong> ${tg ? 'Да' : 'Нет'}</p>
+            <p><strong>Демо режим:</strong> ${isDemoMode ? 'Да' : 'Нет'}</p>
+            <p><strong>Вопросов в памяти:</strong> ${questions.length}</p>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="testApiConnection()">
+                    🔄 Тест API
+                </button>
+                <button class="btn btn-secondary" onclick="location.reload()">
+                    ↩️ Перезагрузить
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Тест соединения с API
+async function testApiConnection() {
+    try {
+        const response = await fetch(`/api/questions/${userId}`);
+        const data = await response.json();
+        alert(`✅ API работает! Ответ: ${JSON.stringify(data).substring(0, 100)}...`);
+        console.log('API Response:', data);
+        
+        // Перезагружаем вопросы
+        loadQuestions();
+    } catch (error) {
+        alert(`❌ API ошибка: ${error.message}`);
+    }
+}
+
+// Замените вызов initTelegram в конце файла на:
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== APP STARTED ===');
+    
+    // Даём 2 секунды на обычную инициализацию
+    setTimeout(function() {
+        // Если вопросы не загрузились, включаем отладку
+        if (questions.length === 0 && document.getElementById('questions-list').innerHTML.includes('loading')) {
+            console.log('Вопросы не загрузились, включаем отладку...');
+            enableDebugMode();
+        }
+    }, 2000);
+    
+    // Запускаем обычную инициализацию
+    initTelegram();
+});
         
         // ========== РЕЖИМ ДЕМО (если Telegram не доступен) ==========
         function initDemoMode() {
