@@ -1,9 +1,10 @@
 {
   "name": "telegram-questions-app",
   "version": "1.0.0",
-  "main": "src/server.js",
+  "main": "src/combined.js",
   "scripts": {
-    "start": "node src/combined.js"
+    "start": "node src/combined.js",
+    "dev": "nodemon src/combined.js"
   },
   "dependencies": {
     "express": "^4.18.2",
