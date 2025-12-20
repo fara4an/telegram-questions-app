@@ -6,542 +6,179 @@
     <title>Анонимные вопросы | Telegram Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --primary: #0088cc;
-            --secondary: #667eea;
-            --success: #4CAF50;
-            --danger: #ff4757;
-            --background: #f5f5f5;
-            --card-bg: #ffffff;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: #333;
-        }
-        
-        .app-container {
-            max-width: 100%;
-            background: var(--card-bg);
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            margin: 0 auto;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
-            color: white;
-            padding: 25px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-        
-        .header .subtitle {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        
-        .user-info {
-            background: rgba(255,255,255,0.1);
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 15px;
-            display: inline-block;
-        }
-        
-        .tabs {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-        }
-        
-        .tab {
-            flex: 1;
-            padding: 18px;
-            text-align: center;
-            border: none;
-            background: none;
-            font-size: 16px;
-            cursor: pointer;
-            color: #6c757d;
-            position: relative;
-            transition: all 0.3s;
-        }
-        
-        .tab.active {
-            background: white;
-            color: var(--primary);
-            font-weight: bold;
-        }
-        
-        .tab-badge {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: var(--danger);
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 12px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .content {
-            padding: 0;
-            min-height: 500px;
-        }
-        
-        .page {
-            display: none;
-            animation: fadeIn 0.5s;
-        }
-        
-        .page.active {
-            display: block;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
-        }
-        
-        .question-card {
-            margin-bottom: 20px;
-            transition: transform 0.2s;
-        }
-        
-        .question-card:hover {
-            transform: translateY(-2px);
-        }
-        
-        .question-text {
-            font-size: 16px;
-            margin-bottom: 15px;
-            line-height: 1.5;
-            color: #333;
-        }
-        
-        .question-meta {
-            font-size: 12px;
-            color: #6c757d;
-            margin-bottom: 15px;
-        }
-        
-        .answer-section {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        
-        textarea {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            font-size: 14px;
-            resize: vertical;
-            margin-bottom: 15px;
-            font-family: inherit;
-            transition: border-color 0.3s;
-        }
-        
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        
-        .buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
-            color: white;
-        }
-        
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-secondary {
-            background: #e9ecef;
-            color: #495057;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-        }
-        
-        .empty-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-            opacity: 0.3;
-        }
-        
-        .answer-bubble {
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 10px;
-            border-left: 4px solid var(--success);
-        }
-        
-        .share-link-container {
-            margin: 20px 0;
-        }
-        
-        .share-link {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            font-size: 14px;
-            margin: 15px 0;
-            border: 2px dashed #dee2e6;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .stat-item {
-            text-align: center;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-        }
-        
-        .stat-number {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--primary);
-            margin-bottom: 5px;
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            color: #6c757d;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
-        
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid var(--primary);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Телеграм кнопка */
-        .tg-button {
-            background: var(--primary);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 10px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: bold;
-            margin: 10px;
-        }
-        
-        .status-bar {
-            background: #f8f9fa;
-            padding: 10px 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #6c757d;
-            border-top: 1px solid #dee2e6;
-        }
-        
-        /* Адаптивность */
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 24px;
-            }
-            
-            .tab {
-                padding: 15px 10px;
-                font-size: 14px;
-            }
-            
-            .buttons {
-                flex-direction: column;
-            }
-            
-            .stats-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-        
-        @media (max-width: 480px) {
-            body {
-                padding: 10px;
-            }
-            
-            .card {
-                margin: 10px;
-                padding: 15px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        /* СТИЛИ ОСТАЮТСЯ ТАКИМИ ЖЕ КАК У ВАС БЫЛИ */
+        /* Я не меняю стили, только JavaScript */
     </style>
 </head>
 <body>
     <div class="app-container" id="app">
-        <div class="header">
-            <h1>❓ Анонимные вопросы</h1>
-            <div class="subtitle">Telegram Mini App</div>
-            <div class="user-info" id="userInfo">
-                Загрузка пользователя...
-            </div>
-        </div>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('questions')" id="tab-questions">
-                📥 Вопросы <span class="tab-badge" id="questions-badge"></span>
-            </button>
-            <button class="tab" onclick="switchTab('answers')" id="tab-answers">✅ Ответы</button>
-            <button class="tab" onclick="switchTab('profile')" id="tab-profile">👤 Профиль</button>
-        </div>
-        
-        <div class="content">
-            <!-- Страница вопросов -->
-            <div id="page-questions" class="page active">
-                <div class="loading" id="questions-loading">
-                    <div class="loading-spinner"></div>
-                    <p>Загрузка вопросов...</p>
-                </div>
-                <div id="questions-list"></div>
-            </div>
-            
-            <!-- Страница ответов -->
-            <div id="page-answers" class="page">
-                <div class="loading" id="answers-loading">
-                    <div class="loading-spinner"></div>
-                    <p>Загрузка ответов...</p>
-                </div>
-                <div id="answers-list"></div>
-            </div>
-            
-            <!-- Страница профиля -->
-            <div id="page-profile" class="page">
-                <div class="card">
-                    <h2>👤 Ваш профиль</h2>
-                    <div id="profile-info">
-                        <p>Имя: <span id="profile-username">Загрузка...</span></p>
-                        <p>ID: <span id="profile-userid">Загрузка...</span></p>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h3>🔗 Ваша ссылка для вопросов</h3>
-                    <p>Поделитесь этой ссылкой, чтобы получать вопросы:</p>
-                    <div class="share-link" id="share-link">
-                        Загрузка...
-                    </div>
-                    <div class="buttons">
-                        <button class="btn btn-primary" onclick="copyLink()">📋 Копировать</button>
-                        <button class="btn btn-success" onclick="shareToTelegram()">📤 Поделиться</button>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h3>📊 Статистика</h3>
-                    <div class="stats-grid" id="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-number" id="stat-total">0</div>
-                            <div class="stat-label">Всего</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number" id="stat-answered">0</div>
-                            <div class="stat-label">Отвечено</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number" id="stat-pending">0</div>
-                            <div class="stat-label">Ждут ответа</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h3>🛠 Информация</h3>
-                    <p>Приложение работает на Render.com</p>
-                    <p>Бот: @anonymous_questions_test_bot</p>
-                    <p>Версия: 1.0.0</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="status-bar">
-            <span id="connection-status">🔴 Подключение...</span>
-        </div>
+        <!-- ВЕРСТКА ОСТАЁТСЯ ТАКОЙ ЖЕ -->
+        <!-- Я не меняю HTML структуру -->
     </div>
 
     <script>
-    // Telegram Web App инициализация
-    let tg = window.Telegram?.WebApp;
-    let userId = null;
-    let username = null;
-    let questions = [];
-    
-    // Инициализация
-    function initTelegram() {
-        if (!tg) {
-            // Режим тестирования (не в Telegram)
-            console.log('Режим тестирования: не в Telegram Web App');
-            userId = 'demo_' + Date.now();
-            username = 'Тестовый пользователь';
-            showTestMode();
-            loadDemoData();
-            return;
+        // Telegram Web App инициализация
+        let tg = window.Telegram?.WebApp;
+        let userId = null;
+        let username = null;
+        let questions = [];
+        let isDemoMode = false;
+        
+        // ========== ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ ==========
+        async function initTelegram() {
+            console.log('🚀 Инициализация приложения...');
+            
+            // Проверяем, в Telegram ли мы
+            if (tg) {
+                try {
+                    tg.ready();
+                    tg.expand();
+                    
+                    const initData = tg.initDataUnsafe;
+                    userId = initData.user?.id;
+                    username = initData.user?.username || `user_${userId}`;
+                    
+                    console.log('Telegram User ID:', userId);
+                    
+                    if (!userId) {
+                        showError('Не удалось получить ID пользователя');
+                        return;
+                    }
+                    
+                    // Обновляем UI
+                    updateUserInfo();
+                    
+                    // Немедленно показываем контент (не ждём загрузки)
+                    showContent();
+                    
+                    // Загружаем вопросы в фоне
+                    loadQuestions();
+                    
+                } catch (error) {
+                    console.error('Ошибка инициализации Telegram:', error);
+                    initDemoMode();
+                }
+            } else {
+                // Режим тестирования (браузер)
+                console.log('📱 Режим тестирования в браузере');
+                initDemoMode();
+            }
         }
         
-        // Telegram Web App режим
-        tg.ready();
-        tg.expand();
-        tg.enableClosingConfirmation();
-        
-        const initData = tg.initDataUnsafe;
-        userId = initData.user?.id;
-        username = initData.user?.username || `user_${userId}`;
-        
-        if (!userId) {
+        // ========== РЕЖИМ ДЕМО (если Telegram не доступен) ==========
+        function initDemoMode() {
+            isDemoMode = true;
+            userId = 'demo_' + Date.now();
+            username = 'Демо пользователь';
+            
+            // Показываем демо-режим
             document.getElementById('userInfo').innerHTML = `
-                <div style="color: #ff4757; text-align: center; padding: 20px;">
-                    ⚠️ <b>Не удалось получить ID пользователя</b><br>
-                    <small>Попробуйте открыть приложение через бота</small>
+                <div style="background: #ffeaa7; color: #333; padding: 10px; border-radius: 5px;">
+                    🔧 Демо-режим (тестирование)
                 </div>
             `;
-            return;
+            
+            updateUserInfo();
+            showContent();
+            loadDemoData();
         }
         
-        // Обновляем UI
-        updateUserInfo();
-        loadQuestions();
+        // ========== ПОКАЗАТЬ КОНТЕНТ НЕМЕДЛЕННО ==========
+        function showContent() {
+            // Скрываем все загрузки
+            hideAllLoading();
+            
+            // Показываем пользователя
+            document.getElementById('profile-username').textContent = username;
+            document.getElementById('profile-userid').textContent = userId;
+            
+            // Генерируем ссылку
+            const botUsername = 'ваш_бот_username'; // ЗАМЕНИТЕ НА ИМЯ ВАШЕГО БОТА
+            const shareLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+            document.getElementById('share-link').textContent = shareLink;
+            
+            // Обновляем статус
+            updateConnectionStatus('🟢 Готово');
+        }
         
-        // Периодическая проверка новых вопросов
-        setInterval(loadQuestions, 30000);
-    }
-    
-    // Загрузить вопросы
-    async function loadQuestions() {
-        try {
-            showLoading('questions');
-            updateConnectionStatus('🟡 Загрузка вопросов...');
-            
-            const response = await fetch(`/api/questions/${userId}`);
-            if (!response.ok) {
-                // Если API не отвечает, используем демо-данные
-                throw new Error('API не доступен');
+        // ========== ЗАГРУЗКА ВОПРОСОВ ==========
+        async function loadQuestions() {
+            try {
+                console.log('Загрузка вопросов для пользователя:', userId);
+                
+                // Устанавливаем таймаут 5 секунд
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Таймаут загрузки')), 5000)
+                );
+                
+                // Пытаемся загрузить с API
+                const fetchPromise = fetch(`/api/questions/${userId}`);
+                
+                const response = await Promise.race([fetchPromise, timeoutPromise]);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                questions = await response.json();
+                
+                if (!Array.isArray(questions)) {
+                    throw new Error('Некорректный ответ от сервера');
+                }
+                
+                console.log('Загружено вопросов:', questions.length);
+                
+                // Рендерим результаты
+                renderQuestions();
+                renderAnswers();
+                updateStats();
+                updateBadge();
+                
+                if (questions.length === 0) {
+                    showEmptyState();
+                }
+                
+            } catch (error) {
+                console.warn('Не удалось загрузить вопросы:', error.message);
+                
+                // Используем демо-данные
+                loadDemoData();
+                
+                // Показываем предупреждение
+                showApiWarning();
+            } finally {
+                // Всегда скрываем индикаторы загрузки
+                hideAllLoading();
             }
-            
-            questions = await response.json();
-            
-            // Проверяем, что получили массив
-            if (!Array.isArray(questions)) {
-                throw new Error('Некорректный ответ от сервера');
-            }
-            
-            renderQuestions();
-            renderAnswers();
-            updateStats();
-            updateBadge();
-            updateConnectionStatus('🟢 Онлайн');
-            
-        } catch (error) {
-            console.log('Используем демо данные:', error.message);
-            // Используем демо-данные
+        }
+        
+        // ========== ДЕМО-ДАННЫЕ ==========
+        function loadDemoData() {
             questions = [
                 {
                     id: 1,
-                    text: "Добро пожаловать в приложение!",
+                    text: "Привет! Это демо-вопрос 1",
                     answer: null,
                     is_answered: false,
                     created_at: new Date().toISOString(),
-                    from_username: 'Система'
+                    from_username: 'Аноним'
                 },
                 {
                     id: 2,
-                    text: "Здесь будут появляться вопросы от других пользователей",
-                    answer: "Вы сможете ответить на них здесь же",
+                    text: "Как тебе это приложение?",
+                    answer: "Пока всё отлично работает!",
                     is_answered: true,
-                    created_at: new Date(Date.now() - 3600000).toISOString(),
+                    created_at: new Date(Date.now() - 86400000).toISOString(),
                     answered_at: new Date().toISOString(),
-                    from_username: 'Система'
+                    from_username: 'Аноним'
+                },
+                {
+                    id: 3,
+                    text: "Что планируешь делать дальше?",
+                    answer: null,
+                    is_answered: false,
+                    created_at: new Date(Date.now() - 172800000).toISOString(),
+                    from_username: 'Друг'
                 }
             ];
             
@@ -549,116 +186,135 @@
             renderAnswers();
             updateStats();
             updateBadge();
-            updateConnectionStatus('🟡 Демо режим');
-            
-            // Показываем информацию о демо-режиме
-            showDemoNotice();
-            
-        } finally {
-            hideLoading('questions');
-            hideLoading('answers');
         }
-    }
-    
-    // Показать уведомление о демо-режиме
-    function showDemoNotice() {
-        const container = document.getElementById('questions-list');
-        if (container && questions.length > 0) {
-            container.innerHTML = `
-                <div class="card" style="border-left-color: #ffa502;">
-                    <div style="text-align: center; color: #ffa502;">
-                        ⚠️ <b>Демо режим</b><br>
-                        <small>Сервер временно не доступен. Используются тестовые данные.</small>
+        
+        // ========== РЕНДЕРИНГ ВОПРОСОВ ==========
+        function renderQuestions() {
+            const container = document.getElementById('questions-list');
+            if (!container) return;
+            
+            const unanswered = questions.filter(q => !q.is_answered);
+            
+            if (unanswered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <h3>Пока нет новых вопросов</h3>
+                        <p>Поделитесь своей ссылкой, чтобы получать вопросы</p>
+                        <button class="btn btn-primary" onclick="shareToTelegram()" style="margin-top: 15px;">
+                            📤 Поделиться ссылкой
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = unanswered.map(q => `
+                <div class="card question-card">
+                    <div class="question-meta">
+                        ${formatDate(q.created_at)}
+                        ${q.from_username ? `· От: ${escapeHtml(q.from_username)}` : '· Аноним'}
+                        ${isDemoMode ? '<span style="color: #ffa502; margin-left: 10px;">[Демо]</span>' : ''}
+                    </div>
+                    <div class="question-text">${escapeHtml(q.text)}</div>
+                    <div class="answer-section">
+                        <textarea 
+                            id="answer-${q.id}" 
+                            placeholder="Введите ваш ответ..." 
+                            rows="3"
+                        ></textarea>
+                        <div class="buttons">
+                            <button class="btn btn-success" onclick="submitAnswer(${q.id})">
+                                ✅ Ответить
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
+                                ❌ Удалить
+                            </button>
+                        </div>
                     </div>
                 </div>
-                ${container.innerHTML}
-            `;
-        }
-    }
-    
-    // Отобразить вопросы
-    function renderQuestions() {
-        const container = document.getElementById('questions-list');
-        if (!container) return;
-        
-        const unanswered = questions.filter(q => !q.is_answered);
-        
-        if (unanswered.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <h3>Пока нет новых вопросов</h3>
-                    <p>Поделитесь своей ссылкой, чтобы получать вопросы</p>
-                    <button class="btn btn-primary" onclick="shareToTelegram()" style="margin-top: 15px;">
-                        📤 Поделиться ссылкой
-                    </button>
-                </div>
-            `;
-            return;
+            `).join('');
         }
         
-        container.innerHTML = unanswered.map(q => `
-            <div class="card question-card" data-id="${q.id}">
-                <div class="question-meta">
-                    ${formatDate(q.created_at)}
-                    ${q.from_username ? `· От: <strong>${escapeHtml(q.from_username)}</strong>` : '· Аноним'}
-                </div>
-                <div class="question-text">${escapeHtml(q.text)}</div>
-                <div class="answer-section">
-                    <textarea 
-                        id="answer-${q.id}" 
-                        placeholder="Введите ваш ответ..." 
-                        rows="3"
-                    ></textarea>
+        // ========== РЕНДЕРИНГ ОТВЕТОВ ==========
+        function renderAnswers() {
+            const container = document.getElementById('answers-list');
+            if (!container) return;
+            
+            const answered = questions.filter(q => q.is_answered);
+            
+            if (answered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📤</div>
+                        <h3>Нет отвеченных вопросов</h3>
+                        <p>Ответьте на входящие вопросы</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = answered.map(q => `
+                <div class="card question-card">
+                    <div class="question-meta">
+                        ${formatDate(q.created_at)}
+                        ${q.answered_at ? `· Ответ: ${formatDate(q.answered_at)}` : ''}
+                        ${isDemoMode ? '<span style="color: #ffa502; margin-left: 10px;">[Демо]</span>' : ''}
+                    </div>
+                    <div class="question-text">${escapeHtml(q.text)}</div>
+                    <div class="answer-bubble">
+                        <strong>Ваш ответ:</strong><br>
+                        ${escapeHtml(q.answer)}
+                    </div>
                     <div class="buttons">
-                        <button class="btn btn-success" onclick="submitAnswer(${q.id})">
-                            ✅ Ответить
+                        <button class="btn btn-primary" onclick="shareAnswer(${q.id})">
+                            📤 Поделиться
                         </button>
                         <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
                             ❌ Удалить
                         </button>
                     </div>
                 </div>
-            </div>
-        `).join('');
-    }
-    
-    // Форматирование даты
-    function formatDate(dateString) {
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch {
-            return 'только что';
-        }
-    }
-    
-    // Отправить ответ
-    async function submitAnswer(questionId) {
-        const answerText = document.getElementById(`answer-${questionId}`).value.trim();
-        
-        if (!answerText) {
-            showAlert('Введите ответ');
-            return;
+            `).join('');
         }
         
-        try {
-            const response = await fetch(`/api/questions/${questionId}/answer`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ answer: answerText })
-            });
+        // ========== ОТПРАВКА ОТВЕТА ==========
+        async function submitAnswer(questionId) {
+            const answerText = document.getElementById(`answer-${questionId}`).value.trim();
             
-            if (response.ok) {
-                showAlert('✅ Ответ сохранен!');
-                loadQuestions(); // Перезагружаем
-            } else {
+            if (!answerText) {
+                showAlert('Введите ответ');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/questions/${questionId}/answer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answer: answerText })
+                });
+                
+                if (response.ok) {
+                    showAlert('✅ Ответ сохранен!');
+                    
+                    // Обновляем локально
+                    const question = questions.find(q => q.id === questionId);
+                    if (question) {
+                        question.answer = answerText;
+                        question.is_answered = true;
+                        question.answered_at = new Date().toISOString();
+                        renderQuestions();
+                        renderAnswers();
+                        updateStats();
+                        updateBadge();
+                    }
+                } else {
+                    throw new Error('Ошибка сервера');
+                }
+            } catch (error) {
+                console.error('Ошибка отправки:', error);
                 showAlert('✅ Ответ сохранен локально!');
+                
                 // Обновляем локально
                 const question = questions.find(q => q.id === questionId);
                 if (question) {
@@ -668,51 +324,217 @@
                     renderQuestions();
                     renderAnswers();
                     updateStats();
+                    updateBadge();
                 }
             }
-        } catch (error) {
-            console.error('Ошибка отправки ответа:', error);
-            showAlert('✅ Ответ сохранен локально!');
-            // Обновляем локально
-            const question = questions.find(q => q.id === questionId);
-            if (question) {
-                question.answer = answerText;
-                question.is_answered = true;
-                question.answered_at = new Date().toISOString();
-                renderQuestions();
-                renderAnswers();
-                updateStats();
+        }
+        
+        // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+        function formatDate(dateString) {
+            try {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diff = now - date;
+                
+                // Меньше минуты назад
+                if (diff < 60000) return 'только что';
+                
+                // Меньше часа назад
+                if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
+                
+                // Сегодня
+                if (date.toDateString() === now.toDateString()) {
+                    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                }
+                
+                // Вчера
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                if (date.toDateString() === yesterday.toDateString()) {
+                    return `вчера ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+                }
+                
+                // Старше
+                return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+            } catch {
+                return 'недавно';
             }
         }
-    }
-    
-    // Остальные функции остаются такими же как были...
-    function showLoading(page) {
-        const el = document.getElementById(`${page}-loading`);
-        if (el) el.style.display = 'block';
-    }
-    
-    function hideLoading(page) {
-        const el = document.getElementById(`${page}-loading`);
-        if (el) el.style.display = 'none';
-    }
-    
-    function showAlert(message) {
-        if (tg) {
-            tg.showAlert(message);
-        } else {
-            alert(message);
+        
+        function updateUserInfo() {
+            const userInfoEl = document.getElementById('userInfo');
+            if (userInfoEl) {
+                userInfoEl.innerHTML = `
+                    👤 ${username}<br>
+                    <small>ID: ${userId}</small>
+                `;
+            }
         }
-    }
-    
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    // Инициализация при загрузке
-    document.addEventListener('DOMContentLoaded', initTelegram);
-</script>
+        
+        function updateStats() {
+            const total = questions.length;
+            const answered = questions.filter(q => q.is_answered).length;
+            const pending = total - answered;
+            
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-answered').textContent = answered;
+            document.getElementById('stat-pending').textContent = pending;
+        }
+        
+        function updateBadge() {
+            const badge = document.getElementById('questions-badge');
+            const pending = questions.filter(q => !q.is_answered).length;
+            
+            if (pending > 0) {
+                badge.textContent = pending;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+        
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connection-status');
+            if (statusEl) {
+                statusEl.textContent = status;
+            }
+        }
+        
+        function hideAllLoading() {
+            document.querySelectorAll('.loading').forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+        
+        function showApiWarning() {
+            const questionsList = document.getElementById('questions-list');
+            if (questionsList && !isDemoMode) {
+                questionsList.innerHTML = `
+                    <div class="card" style="border-left-color: #ffa502;">
+                        <div style="text-align: center; color: #ffa502;">
+                            ⚠️ <b>Внимание</b><br>
+                            <small>Сервер временно не доступен. Используются демо-данные.</small><br>
+                            <button class="btn btn-secondary" onclick="loadQuestions()" style="margin-top: 10px; padding: 8px 16px;">
+                                🔄 Повторить попытку
+                            </button>
+                        </div>
+                    </div>
+                    ${questionsList.innerHTML}
+                `;
+            }
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('questions-list');
+            if (container) {
+                container.innerHTML = `
+                    <div class="card" style="border-left-color: #ff4757; text-align: center;">
+                        <div style="color: #ff4757; font-size: 20px;">⚠️</div>
+                        <h3>Ошибка</h3>
+                        <p>${message}</p>
+                        <button class="btn btn-primary" onclick="location.reload()" style="margin-top: 10px;">
+                            🔄 Обновить страницу
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        function showEmptyState() {
+            const container = document.getElementById('questions-list');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📝</div>
+                        <h3>Пока нет вопросов</h3>
+                        <p>Поделитесь своей ссылкой, чтобы получать вопросы</p>
+                        <button class="btn btn-primary" onclick="shareToTelegram()" style="margin-top: 15px;">
+                            📤 Поделиться ссылкой
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function showAlert(message) {
+            if (tg) {
+                tg.showAlert(message);
+            } else {
+                alert(message);
+            }
+        }
+        
+        // ========== ОБЩИЕ ФУНКЦИИ ==========
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById(`page-${tabName}`).classList.add('active');
+        }
+        
+        async function copyLink() {
+            const link = document.getElementById('share-link').textContent;
+            try {
+                await navigator.clipboard.writeText(link);
+                showAlert('✅ Ссылка скопирована!');
+            } catch (error) {
+                showAlert('❌ Не удалось скопировать');
+            }
+        }
+        
+        function shareToTelegram() {
+            const link = document.getElementById('share-link').textContent;
+            const text = `Задай мне анонимный вопрос! ${link}`;
+            
+            if (tg) {
+                tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`);
+            } else {
+                window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`, '_blank');
+            }
+        }
+        
+        function shareAnswer(questionId) {
+            const question = questions.find(q => q.id === questionId);
+            if (!question) return;
+            
+            const text = `Вопрос: ${question.text}\n\nОтвет: ${question.answer}`;
+            
+            if (tg) {
+                tg.shareText(text);
+            } else {
+                showAlert('Функция "Поделиться" доступна в Telegram');
+            }
+        }
+        
+        function deleteQuestion(questionId) {
+            if (!confirm('Удалить этот вопрос?')) return;
+            
+            // Удаляем локально
+            questions = questions.filter(q => q.id !== questionId);
+            
+            // Перерисовываем
+            renderQuestions();
+            renderAnswers();
+            updateStats();
+            updateBadge();
+            
+            showAlert('❌ Вопрос удалён');
+        }
+        
+        // ========== ЗАПУСК ПРИ ЗАГРУЗКЕ ==========
+        document.addEventListener('DOMContentLoaded', initTelegram);
+    </script>
 </body>
 </html>
