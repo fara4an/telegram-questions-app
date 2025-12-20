@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Задать анонимный вопрос</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
             margin: 0;
@@ -41,6 +42,7 @@
         h1 {
             color: #667eea;
             margin-bottom: 10px;
+            font-size: 24px;
         }
         
         .user-info {
@@ -49,6 +51,11 @@
             border-radius: 10px;
             margin: 20px 0;
             border-left: 4px solid #667eea;
+            text-align: left;
+        }
+        
+        .question-form {
+            margin-top: 20px;
         }
         
         textarea {
@@ -67,6 +74,13 @@
         textarea:focus {
             outline: none;
             border-color: #667eea;
+        }
+        
+        .char-counter {
+            text-align: right;
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
         }
         
         button {
@@ -92,16 +106,6 @@
             cursor: not-allowed;
         }
         
-        .success {
-            background: #4CAF50;
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin-top: 20px;
-            display: none;
-            animation: fadeIn 0.5s;
-        }
-        
         .loading {
             display: none;
             margin: 20px 0;
@@ -117,20 +121,14 @@
             margin: 0 auto;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .footer {
-            margin-top: 30px;
-            font-size: 14px;
-            color: #666;
+        .success {
+            background: #4CAF50;
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+            display: none;
+            animation: fadeIn 0.5s;
         }
         
         .error {
@@ -141,86 +139,200 @@
             margin-top: 20px;
             display: none;
         }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .telegram-btn {
+            background: #0088cc;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            margin: 10px;
+        }
+        
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="logo">✍️</div>
-        <h1>Задать анонимный вопрос</h1>
-        <p id="targetUser">Загрузка информации о пользователе...</p>
+        <h1 id="pageTitle">Задать анонимный вопрос</h1>
+        <p id="targetUserInfo">Загрузка информации...</p>
         
         <div class="user-info" id="userInfo">
             Ваш вопрос будет отправлен анонимно
         </div>
         
-        <textarea 
-            id="questionText" 
-            placeholder="Введите ваш вопрос здесь... Будьте вежливы и уважительны!"
-            maxlength="1000"
-        ></textarea>
-        
-        <div style="text-align: right; margin-bottom: 10px; color: #666; font-size: 14px;">
-            <span id="charCount">0</span>/1000 символов
-        </div>
-        
-        <div class="loading" id="loading">
-            <div class="loading-spinner"></div>
-            <p style="margin-top: 10px;">Отправка вопроса...</p>
-        </div>
-        
-        <button id="submitBtn" onclick="submitQuestion()">Отправить анонимно</button>
-        
-        <div class="success" id="successMessage">
-            ✅ Ваш вопрос отправлен успешно!<br>
-            <small>Окно закроется через 3 секунды...</small>
-        </div>
-        
-        <div class="error" id="errorMessage">
-            ❌ Произошла ошибка при отправке
+        <div class="question-form">
+            <textarea 
+                id="questionText" 
+                placeholder="Введите ваш вопрос здесь... Будьте вежливы и уважительны!"
+                maxlength="1000"
+            ></textarea>
+            
+            <div class="char-counter">
+                <span id="charCount">0</span>/1000 символов
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p style="margin-top: 10px;">Отправка вопроса...</p>
+            </div>
+            
+            <button id="submitBtn" onclick="sendQuestion()">Отправить анонимно</button>
+            
+            <div class="success" id="successMessage">
+                ✅ Ваш вопрос отправлен успешно!<br>
+                <small>Окно закроется через 3 секунды...</small>
+            </div>
+            
+            <div class="error" id="errorMessage">
+                ❌ Произошла ошибка при отправке
+            </div>
         </div>
         
         <div class="footer">
             <p>Вопросы отправляются анонимно</p>
             <p>Вы не получите ответ в этом окне</p>
+            <p style="margin-top: 15px;">
+                <a href="#" id="openInTelegram" style="color: #667eea; text-decoration: none;">
+                    📱 Открыть в Telegram
+                </a>
+            </p>
         </div>
+    </div>
+    
+    <div class="status-bar" id="statusBar">
+        <span id="connectionStatus">Подключение...</span>
     </div>
 
     <script>
-        // Получаем ID пользователя из URL
+        // ========== Telegram Web App Инициализация ==========
+        let tg = window.Telegram?.WebApp;
+        let isTelegram = false;
+        let askerId = null;
+        
+        // Получаем ID целевого пользователя из URL
         const pathParts = window.location.pathname.split('/');
-        const toUserId = pathParts[pathParts.length - 1];
+        const targetUserId = pathParts[pathParts.length - 1];
         
-        // Обновляем информацию
-        document.getElementById('targetUser').textContent = `Пользователь #${toUserId}`;
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const fromTelegram = urlParams.get('from') === 'telegram';
+        askerId = urlParams.get('asker');
         
-        // Счетчик символов
-        const textarea = document.getElementById('questionText');
-        const charCount = document.getElementById('charCount');
+        // ========== Инициализация ==========
+        function initApp() {
+            // Если мы в Telegram Web App
+            if (tg) {
+                isTelegram = true;
+                tg.ready();
+                tg.expand();
+                tg.enableClosingConfirmation();
+                
+                // Устанавливаем кнопку "Назад" если нужно
+                if (fromTelegram) {
+                    tg.BackButton.show();
+                    tg.BackButton.onClick(() => {
+                        tg.close();
+                    });
+                }
+                
+                // Обновляем UI для Telegram
+                document.getElementById('pageTitle').textContent = '✍️ Задать вопрос в Telegram';
+                document.getElementById('statusBar').style.display = 'none';
+            }
+            
+            // Обновляем информацию о пользователе
+            updateUserInfo();
+            
+            // Настраиваем счетчик символов
+            setupCharCounter();
+            
+            // Автофокус на поле ввода
+            setTimeout(() => {
+                document.getElementById('questionText').focus();
+            }, 500);
+        }
         
-        textarea.addEventListener('input', function() {
-            charCount.textContent = this.value.length;
-        });
+        // ========== Обновление информации ==========
+        function updateUserInfo() {
+            const userInfo = document.getElementById('userInfo');
+            const targetInfo = document.getElementById('targetUserInfo');
+            
+            if (targetUserId && targetUserId !== 'ask') {
+                targetInfo.textContent = `Пользователю #${targetUserId}`;
+                userInfo.innerHTML = `
+                    <strong>🆔 ID получателя:</strong> ${targetUserId}<br>
+                    <strong>👤 Анонимность:</strong> Ваш вопрос будет отправлен анонимно<br>
+                    <strong>💬 Ответ:</strong> Вы получите ответ в приложении Telegram
+                `;
+                
+                // Обновляем ссылку для открытия в Telegram
+                const openInTelegram = document.getElementById('openInTelegram');
+                if (openInTelegram) {
+                    openInTelegram.href = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=Задать%20анонимный%20вопрос`;
+                }
+            } else {
+                targetInfo.textContent = 'Ошибка: пользователь не указан';
+                userInfo.innerHTML = '<span style="color: #ff4757;">❌ Ошибка: неверная ссылка</span>';
+                document.getElementById('submitBtn').disabled = true;
+            }
+            
+            // Обновляем статус подключения
+            updateConnectionStatus('🟢 Готово к отправке');
+        }
         
-        // Отправка вопроса
-        async function submitQuestion() {
-            const questionText = textarea.value.trim();
+        // ========== Отправка вопроса ==========
+        async function sendQuestion() {
+            const questionText = document.getElementById('questionText').value.trim();
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
             
             // Валидация
             if (!questionText) {
-                alert('Введите текст вопроса');
+                showAlert('Введите текст вопроса');
                 return;
             }
             
             if (questionText.length < 5) {
-                alert('Вопрос слишком короткий');
+                showAlert('Вопрос слишком короткий (минимум 5 символов)');
                 return;
             }
             
             // Блокируем кнопку и показываем загрузку
-            const btn = document.getElementById('submitBtn');
-            const loading = document.getElementById('loading');
             btn.disabled = true;
             loading.style.display = 'block';
+            updateConnectionStatus('🟡 Отправка вопроса...');
             
             try {
                 // Отправляем вопрос на сервер
@@ -230,51 +342,100 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        fromUserId: 0, // 0 для анонимных вопросов
-                        toUserId: toUserId,
-                        text: questionText
+                        fromUserId: askerId || 0, // 0 для анонимных вопросов
+                        toUserId: targetUserId,
+                        text: questionText,
+                        source: isTelegram ? 'telegram_webapp' : 'web'
                     })
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Ошибка сервера');
+                    throw new Error('Ошибка сервера: ' + response.status);
                 }
                 
-                // Показываем успех
-                document.getElementById('successMessage').style.display = 'block';
-                document.getElementById('errorMessage').style.display = 'none';
+                const data = await response.json();
                 
-                // Очищаем поле
-                textarea.value = '';
-                charCount.textContent = '0';
-                
-                // Закрываем окно через 3 секунды
-                setTimeout(() => {
-                    // Пытаемся закрыть окно
-                    if (window.opener) {
-                        window.close();
-                    } else if (window.telegramWebApp) {
-                        window.telegramWebApp.close();
+                if (data.success) {
+                    // Показываем успех
+                    document.getElementById('successMessage').style.display = 'block';
+                    document.getElementById('errorMessage').style.display = 'none';
+                    
+                    // Очищаем поле
+                    document.getElementById('questionText').value = '';
+                    document.getElementById('charCount').textContent = '0';
+                    
+                    // Обновляем статус
+                    updateConnectionStatus('✅ Вопрос отправлен!');
+                    
+                    // Закрываем окно через 3 секунды (если в Telegram Web App)
+                    if (isTelegram) {
+                        setTimeout(() => {
+                            tg.close();
+                        }, 3000);
                     } else {
-                        window.history.back();
+                        setTimeout(() => {
+                            document.getElementById('successMessage').innerHTML = 
+                                '✅ Вопрос отправлен!<br><small>Можете закрыть эту вкладку</small>';
+                        }, 3000);
                     }
-                }, 3000);
+                    
+                } else {
+                    throw new Error(data.error || 'Неизвестная ошибка');
+                }
                 
             } catch (error) {
                 console.error('Ошибка отправки:', error);
                 document.getElementById('errorMessage').style.display = 'block';
                 document.getElementById('successMessage').style.display = 'none';
+                document.getElementById('errorMessage').innerHTML = 
+                    `❌ Ошибка отправки:<br><small>${error.message}</small>`;
+                
+                updateConnectionStatus('🔴 Ошибка отправки');
+                
+                // Разблокируем кнопку для повторной попытки
+                setTimeout(() => {
+                    btn.disabled = false;
+                }, 3000);
+                
             } finally {
-                // Разблокируем кнопку и скрываем загрузку
-                btn.disabled = false;
+                // Скрываем загрузку
                 loading.style.display = 'none';
             }
         }
         
-        // Автофокус на поле ввода
-        window.onload = function() {
-            textarea.focus();
-        };
+        // ========== Вспомогательные функции ==========
+        function setupCharCounter() {
+            const textarea = document.getElementById('questionText');
+            const charCount = document.getElementById('charCount');
+            
+            textarea.addEventListener('input', function() {
+                charCount.textContent = this.value.length;
+                
+                // Меняем цвет если接近 лимита
+                if (this.value.length > 900) {
+                    charCount.style.color = '#ff4757';
+                } else if (this.value.length > 800) {
+                    charCount.style.color = '#ffa502';
+                } else {
+                    charCount.style.color = '#666';
+                }
+            });
+        }
+        
+        function showAlert(message) {
+            if (isTelegram) {
+                tg.showAlert(message);
+            } else {
+                alert(message);
+            }
+        }
+        
+        function updateConnectionStatus(status) {
+            document.getElementById('connectionStatus').textContent = status;
+        }
+        
+        // ========== Запуск при загрузке ==========
+        document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>
