@@ -9,7 +9,7 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- ШАПКА - такой же стиль как в основной аппке -->
+        <!-- ШАПКА -->
         <div class="header">
             <h1>✍️ Задать вопрос</h1>
             <div class="user-info" id="userInfo">
@@ -23,8 +23,8 @@
         
         <!-- КОНТЕНТ -->
         <div class="tab-content" style="padding: 0;">
-            <!-- Карточка целевого пользователя -->
-            <div style="background: var(--tg-secondary-bg); padding: 20px; margin: 16px; border-radius: var(--tg-radius); border: 1px solid var(--tg-border-color);">
+            <!-- КАРТОЧКА ЦЕЛЕВОГО ПОЛЬЗОВАТЕЛЯ -->
+            <div class="target-user-card">
                 <div style="text-align: center;">
                     <div style="font-size: 24px; margin-bottom: 10px;">👤</div>
                     <div style="font-size: 18px; font-weight: 600; color: var(--tg-accent-color); margin-bottom: 5px;" id="targetUsername">
@@ -36,8 +36,8 @@
                 </div>
             </div>
             
-            <!-- Форма вопроса -->
-            <div style="padding: 0 16px 20px;">
+            <!-- ФОРМА ВОПРОСА -->
+            <div class="ask-form-container">
                 <div style="margin-bottom: 20px;">
                     <label style="display: block; margin-bottom: 12px; font-weight: 600; color: var(--tg-text-color);">
                         Ваш вопрос:
@@ -49,7 +49,7 @@
                         maxlength="1000"
                         style="width: 100%; padding: 16px; border: 1px solid var(--tg-border-color); border-radius: 12px; background: var(--tg-input-bg); color: var(--tg-text-color); font-family: inherit; resize: vertical; font-size: 15px;"
                     ></textarea>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; color: var(--tg-secondary-text);">
+                    <div class="char-counter-wrapper">
                         <div id="charCounter">
                             <span id="charCount">0</span>/1000 символов
                         </div>
@@ -59,29 +59,17 @@
                     </div>
                 </div>
                 
-                <!-- Уведомление об анонимности -->
-                <div style="background: rgba(46, 141, 230, 0.1); border: 1px solid rgba(46, 141, 230, 0.3); border-radius: var(--tg-radius); padding: 16px; margin-bottom: 20px;">
-                    <ul style="list-style: none; padding: 0; margin: 0;">
-                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
-                            <span style="color: var(--tg-accent-color);">✓</span>
-                            <span>Ваш вопрос будет отправлен <strong>анонимно</strong></span>
-                        </li>
-                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
-                            <span style="color: var(--tg-accent-color);">✓</span>
-                            <span>Получатель не узнает, кто задал вопрос</span>
-                        </li>
-                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
-                            <span style="color: var(--tg-accent-color);">✓</span>
-                            <span>Ответ придёт получателю в приложении</span>
-                        </li>
-                        <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
-                            <span style="color: var(--tg-accent-color);">✓</span>
-                            <span>Вы не получите уведомление об ответе</span>
-                        </li>
+                <!-- УВЕДОМЛЕНИЕ ОБ АНОНИМНОСТИ -->
+                <div class="form-notice">
+                    <ul>
+                        <li>Ваш вопрос будет отправлен <strong>анонимно</strong></li>
+                        <li>Получатель не узнает, кто задал вопрос</li>
+                        <li>Ответ придёт получателю в приложении</li>
+                        <li>Вы не получите уведомление об ответе</li>
                     </ul>
                 </div>
                 
-                <!-- Кнопка отправки -->
+                <!-- КНОПКА ОТПРАВКИ -->
                 <button 
                     class="btn btn-primary" 
                     onclick="sendQuestion()" 
@@ -91,8 +79,8 @@
                     📤 Отправить анонимно
                 </button>
                 
-                <!-- Результат -->
-                <div id="result" style="margin-top: 20px; padding: 20px; border-radius: var(--tg-radius); text-align: center; animation: fadeIn 0.3s ease; display: none;"></div>
+                <!-- РЕЗУЛЬТАТ -->
+                <div id="result" class="result-message" style="display: none;"></div>
             </div>
         </div>
         
@@ -128,7 +116,7 @@
                 }
             } else {
                 // Демо-режим
-                currentUserId = '999999';
+                currentUserId = 'demo_' + Math.floor(Math.random() * 1000000);
                 askerUsername = 'Аноним';
                 document.getElementById('askerUsername').textContent = 'Аноним';
             }
@@ -182,14 +170,15 @@
         async function loadTargetUserInfo() {
             try {
                 const response = await fetch(`/api/user/${targetUserId}`);
-                const user = await response.json();
-                
-                if (user.username) {
-                    targetUsername = user.username;
-                    document.getElementById('targetUsername').textContent = `@${user.username}`;
-                } else if (user.first_name) {
-                    targetUsername = user.first_name;
-                    document.getElementById('targetUsername').textContent = user.first_name;
+                if (response.ok) {
+                    const user = await response.json();
+                    
+                    if (user.username) {
+                        targetUsername = user.username;
+                        document.getElementById('targetUsername').textContent = `@${user.username}`;
+                    } else {
+                        document.getElementById('targetUsername').textContent = 'Пользователь';
+                    }
                 } else {
                     document.getElementById('targetUsername').textContent = 'Пользователь';
                 }
@@ -254,7 +243,7 @@
                 
                 if (response.ok) {
                     // Успех
-                    resultDiv.className = 'question-card answered';
+                    resultDiv.className = 'result-message result-success';
                     resultDiv.innerHTML = `
                         <div style="text-align: center; padding: 20px;">
                             <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
@@ -284,7 +273,7 @@
                 console.error('Ошибка отправки:', error);
                 
                 // Ошибка
-                resultDiv.className = 'question-card sent';
+                resultDiv.className = 'result-message result-error';
                 resultDiv.innerHTML = `
                     <div style="text-align: center; padding: 20px;">
                         <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
@@ -321,7 +310,7 @@
             
             const resultDiv = document.getElementById('result');
             resultDiv.style.display = 'block';
-            resultDiv.className = 'question-card sent';
+            resultDiv.className = 'result-message result-error';
             resultDiv.innerHTML = `
                 <div style="text-align: center; padding: 20px;">
                     <div style="font-size: 24px; margin-bottom: 10px;">❌</div>

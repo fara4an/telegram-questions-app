@@ -68,25 +68,29 @@
                         <p><strong>Статус:</strong> <span style="color: var(--tg-accent-color);">Активен</span></p>
                     </div>
                     
-                    <div class="share-section">
-                        <h3>🔗 Пригласить друзей</h3>
+                    <!-- УБРАН БЛОК SHARE-SECTION ИЗ ПРОФИЛЯ -->
+                    
+                    <!-- ШЕРИНГ СВОЕГО ПРОФИЛЯ -->
+                    <div class="share-profile-section" style="margin-top: 30px;">
+                        <h3 style="margin-bottom: 15px; color: var(--tg-text-color); display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 24px;">🔗</span> Пригласить друзей
+                        </h3>
                         <p style="color: var(--tg-secondary-text); margin-bottom: 15px; font-size: 14px;">
-                            Друзья смогут задать вам анонимные вопросы
+                            Друзья смогут задать вам анонимные вопросы по вашей персональной ссылке
                         </p>
                         
-                        <div class="share-buttons">
-                            <div class="share-btn" onclick="shareProfileToTelegram()">
-                                <div class="icon">📱</div>
-                                <div class="label">В историю</div>
-                            </div>
-                            <div class="share-btn" onclick="shareProfileToTelegram()">
-                                <div class="icon">💬</div>
-                                <div class="label">В чаты</div>
-                            </div>
+                        <div class="share-link" style="margin: 20px 0;">
+                            <code id="shareLink" style="display: block; word-break: break-all; font-size: 13px; padding: 12px; background: var(--tg-input-bg); border-radius: 8px; border: 1px solid var(--tg-border-color);">
+                                Загрузка...
+                            </code>
                         </div>
+                        
+                        <button class="btn btn-primary" onclick="shareProfileToTelegram()" style="width: 100%;">
+                            📤 Поделиться своей ссылкой
+                        </button>
                     </div>
                     
-                    <div class="stats-section">
+                    <div class="stats-section" style="margin-top: 40px;">
                         <h3 style="margin-bottom: 20px; color: var(--tg-text-color); display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 24px;">📊</span> Статистика
                         </h3>
@@ -145,6 +149,55 @@
         </div>
     </div>
     
+    <!-- МОДАЛКА ДЛЯ ШЕРИНГА ОТВЕТА -->
+    <div id="shareAnswerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🖼️ Поделиться ответом</h3>
+                <button class="btn-close" onclick="closeShareAnswerModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="shareQuestionPreview" style="margin-bottom: 20px; padding: 15px; background: var(--tg-input-bg); border-radius: 8px; border-left: 3px solid var(--tg-accent-color);"></div>
+                
+                <div id="shareImagePreview" style="text-align: center; margin: 20px 0;">
+                    <div class="loading-spinner" style="width: 50px; height: 50px; margin: 0 auto;"></div>
+                    <p style="margin-top: 10px; color: var(--tg-secondary-text);">Генерируем картинку...</p>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: rgba(46, 141, 230, 0.1); border-radius: 8px; border: 1px solid rgba(46, 141, 230, 0.3);">
+                    <p style="color: var(--tg-text-color); margin-bottom: 10px; font-size: 14px;">
+                        <strong>💡 После генерации картинки:</strong>
+                    </p>
+                    <ul style="color: var(--tg-secondary-text); font-size: 13px; margin: 0; padding-left: 20px;">
+                        <li>Картинка автоматически скачается</li>
+                        <li>Скопируйте текст ниже и опубликуйте вместе с картинкой</li>
+                        <li>Текст содержит вашу ссылку для вопросов</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--tg-text-color);">
+                        Текст для поста:
+                    </label>
+                    <textarea 
+                        id="shareText" 
+                        rows="4"
+                        style="width: 100%; padding: 12px; border: 1px solid var(--tg-border-color); border-radius: 8px; background: var(--tg-input-bg); color: var(--tg-text-color); font-size: 14px; resize: vertical;"
+                        readonly
+                    ></textarea>
+                    <button class="btn btn-secondary" onclick="copyShareText()" style="margin-top: 10px; width: 100%;">
+                        📋 Скопировать текст
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="downloadAndShare()">
+                    💾 Скачать картинку и текст
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <script src="app.js"></script>
     <script>
         // Счетчик символов для ответа
@@ -157,7 +210,97 @@
                     charCount.textContent = this.value.length;
                 });
             }
+            
+            // Инициализация статус-точки
+            const statusText = document.getElementById('statusText');
+            if (statusText) {
+                statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
+            }
         });
+        
+        // Функции для шеринга ответа
+        let shareImageBlob = null;
+        let shareQuestionData = null;
+        
+        async function shareAnswer(questionId) {
+            try {
+                // Получаем данные вопроса
+                const response = await fetch(`/api/question/${questionId}`);
+                if (!response.ok) throw new Error('Вопрос не найден');
+                
+                shareQuestionData = await response.json();
+                
+                // Показываем превью вопроса
+                document.getElementById('shareQuestionPreview').innerHTML = `
+                    <div style="font-size: 13px; color: var(--tg-secondary-text); margin-bottom: 5px;">Вопрос:</div>
+                    <div style="font-size: 15px; color: var(--tg-text-color);">${shareQuestionData.text.substring(0, 150)}${shareQuestionData.text.length > 150 ? '...' : ''}</div>
+                `;
+                
+                // Генерируем картинку
+                const imageResponse = await fetch(`/api/generate-image/${questionId}`);
+                if (!imageResponse.ok) throw new Error('Ошибка генерации картинки');
+                
+                shareImageBlob = await imageResponse.blob();
+                const imageUrl = URL.createObjectURL(shareImageBlob);
+                
+                // Показываем превью картинки
+                document.getElementById('shareImagePreview').innerHTML = `
+                    <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 2px solid var(--tg-border-color);" alt="Превью ответа">
+                    <p style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">Картинка готова!</p>
+                `;
+                
+                // Генерируем текст для поста
+                const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+                const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${shareQuestionData.text.substring(0, 100)}${shareQuestionData.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n\n${userLink}`;
+                
+                document.getElementById('shareText').value = shareText;
+                
+                // Открываем модалку
+                document.getElementById('shareAnswerModal').classList.add('active');
+                
+            } catch (error) {
+                console.error('Ошибка шеринга:', error);
+                alert('Не удалось подготовить ответ для шеринга: ' + error.message);
+            }
+        }
+        
+        function closeShareAnswerModal() {
+            document.getElementById('shareAnswerModal').classList.remove('active');
+            if (shareImageBlob) {
+                URL.revokeObjectURL(URL.createObjectURL(shareImageBlob));
+                shareImageBlob = null;
+            }
+            shareQuestionData = null;
+        }
+        
+        function copyShareText() {
+            const textArea = document.getElementById('shareText');
+            textArea.select();
+            document.execCommand('copy');
+            alert('Текст скопирован в буфер обмена!');
+        }
+        
+        function downloadAndShare() {
+            if (!shareImageBlob) {
+                alert('Картинка не загружена!');
+                return;
+            }
+            
+            // Скачиваем картинку
+            const url = URL.createObjectURL(shareImageBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ответ-на-вопрос-${shareQuestionData?.id || Date.now()}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Предлагаем скопировать текст
+            copyShareText();
+            
+            closeShareAnswerModal();
+            alert('✅ Картинка скачана! Текст скопирован в буфер обмена.');
+        }
     </script>
 </body>
 </html>

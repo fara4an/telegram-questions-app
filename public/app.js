@@ -519,3 +519,169 @@ async function deleteQuestion(questionId) {
     showNotification('Вопрос удален (демо)', 'success');
     await loadAllData();
 }
+
+// ========== ШЕРИНГ ОТВЕТОВ ==========
+
+let shareImageBlob = null;
+let shareQuestionData = null;
+
+// Открыть модалку шеринга ответа
+async function openShareAnswerModal(questionId) {
+    try {
+        console.log('Открытие модалки шеринга для вопроса:', questionId);
+        currentQuestionId = questionId;
+        
+        // Показываем загрузку
+        const modal = getElement('shareAnswerModal');
+        if (!modal) {
+            console.error('Модалка шеринга не найдена');
+            return;
+        }
+        
+        modal.classList.add('active');
+        
+        // Получаем данные вопроса
+        const response = await fetch(`/api/question/${questionId}`);
+        if (!response.ok) throw new Error('Вопрос не найден');
+        
+        shareQuestionData = await response.json();
+        
+        // Показываем превью вопроса
+        const preview = getElement('shareQuestionPreview');
+        if (preview) {
+            preview.innerHTML = `
+                <div style="font-size: 13px; color: var(--tg-secondary-text); margin-bottom: 5px;">Вопрос:</div>
+                <div style="font-size: 15px; color: var(--tg-text-color);">
+                    ${escapeHtml(shareQuestionData.text.substring(0, 150))}${shareQuestionData.text.length > 150 ? '...' : ''}
+                </div>
+            `;
+        }
+        
+        // Генерируем картинку
+        const imageResponse = await fetch(`/api/generate-image/${questionId}`);
+        if (!imageResponse.ok) {
+            console.warn('API генерации недоступен, используем тестовую картинку');
+            // Используем тестовую картинку
+            shareImageBlob = await createTestImage(shareQuestionData);
+        } else {
+            shareImageBlob = await imageResponse.blob();
+        }
+        
+        const imageUrl = URL.createObjectURL(shareImageBlob);
+        
+        // Показываем превью картинки
+        const imagePreview = getElement('shareImagePreview');
+        if (imagePreview) {
+            imagePreview.innerHTML = `
+                <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 2px solid var(--tg-border-color);" alt="Превью ответа">
+                <p style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">Картинка готова!</p>
+            `;
+        }
+        
+        // Генерируем текст для поста
+        const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+        const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${shareQuestionData.text.substring(0, 100)}${shareQuestionData.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n\n${userLink}`;
+        
+        const shareTextArea = getElement('shareText');
+        if (shareTextArea) {
+            shareTextArea.value = shareText;
+        }
+        
+    } catch (error) {
+        console.error('Ошибка шеринга:', error);
+        showNotification('Не удалось подготовить ответ для шеринга', 'error');
+        closeShareAnswerModal();
+    }
+}
+
+// Закрыть модалку шеринга
+function closeShareAnswerModal() {
+    const modal = getElement('shareAnswerModal');
+    if (modal) modal.classList.remove('active');
+    
+    if (shareImageBlob) {
+        URL.revokeObjectURL(URL.createObjectURL(shareImageBlob));
+        shareImageBlob = null;
+    }
+    shareQuestionData = null;
+}
+
+// Копировать текст для поста
+function copyShareText() {
+    const textArea = getElement('shareText');
+    if (!textArea) return;
+    
+    textArea.select();
+    textArea.setSelectionRange(0, 99999); // Для мобильных
+    document.execCommand('copy');
+    
+    // Показываем уведомление
+    showNotification('Текст скопирован в буфер обмена!', 'success');
+}
+
+// Скачать картинку и текст
+function downloadAndShare() {
+    if (!shareImageBlob) {
+        showNotification('Картинка не загружена!', 'error');
+        return;
+    }
+    
+    try {
+        // Скачиваем картинку
+        const url = URL.createObjectURL(shareImageBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ответ-на-вопрос-${shareQuestionData?.id || Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Предлагаем скопировать текст
+        copyShareText();
+        
+        closeShareAnswerModal();
+        showNotification('✅ Картинка скачана! Текст скопирован в буфер обмена.', 'success');
+        
+    } catch (error) {
+        console.error('Ошибка скачивания:', error);
+        showNotification('Ошибка скачивания картинки', 'error');
+    }
+}
+
+// Создать тестовую картинку
+async function createTestImage(question) {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 800;
+        canvas.height = 400;
+        
+        // Фон
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, 800, 400);
+        
+        // Текст
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬 Анонимный вопрос', 400, 100);
+        
+        ctx.font = '18px Arial';
+        ctx.fillText('Вопрос:', 400, 150);
+        
+        ctx.font = '16px Arial';
+        const questionText = question.text.substring(0, 50) + (question.text.length > 50 ? '...' : '');
+        ctx.fillText(`"${questionText}"`, 400, 180);
+        
+        ctx.fillStyle = '#2e8de6';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('Ответ успешно отправлен!', 400, 250);
+        
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '14px Arial';
+        ctx.fillText('t.me/anonymous_questions_bot', 400, 350);
+        
+        canvas.toBlob(resolve, 'image/png');
+    });
+}

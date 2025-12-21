@@ -1019,3 +1019,97 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--tg-secondary-text);
 }
+
+/* Стили для страницы ask.html */
+.target-user-card {
+    background: var(--tg-secondary-bg);
+    padding: 20px;
+    margin: 16px;
+    border-radius: var(--tg-radius);
+    border: 1px solid var(--tg-border-color);
+    text-align: center;
+}
+
+.ask-form-container {
+    padding: 0 16px 20px;
+}
+
+.ask-form-container textarea {
+    width: 100%;
+    padding: 16px;
+    border: 1px solid var(--tg-border-color);
+    border-radius: 12px;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 16px;
+    background: var(--tg-input-bg);
+    color: var(--tg-text-color);
+    transition: all 0.2s;
+    min-height: 120px;
+}
+
+.ask-form-container textarea:focus {
+    outline: none;
+    border-color: var(--tg-accent-color);
+    box-shadow: 0 0 0 2px rgba(46, 141, 230, 0.2);
+}
+
+.ask-form-container textarea::placeholder {
+    color: var(--tg-secondary-text);
+}
+
+.char-counter-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--tg-secondary-text);
+}
+
+.form-notice {
+    background: rgba(46, 141, 230, 0.1);
+    border: 1px solid rgba(46, 141, 230, 0.3);
+    border-radius: var(--tg-radius);
+    padding: 16px;
+    margin: 20px 0;
+}
+
+.form-notice ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.form-notice li {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.form-notice li::before {
+    content: "✓";
+    color: var(--tg-accent-color);
+    flex-shrink: 0;
+}
+
+.result-message {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: var(--tg-radius);
+    text-align: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.result-success {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.result-error {
+    background: rgba(229, 57, 53, 0.1);
+    border: 1px solid rgba(229, 57, 53, 0.3);
+}
