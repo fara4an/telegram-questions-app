@@ -645,18 +645,29 @@ bot.start(async (ctx) => {
     const username = ctx.from.username;
     
     // Сохраняем пользователя в БД
+try {
+    // Проверяем, есть ли столбцы first_name и last_name
     try {
         await db.query(
             `INSERT INTO users (telegram_id, username, first_name, last_name) 
              VALUES ($1, $2, $3, $4) 
              ON CONFLICT (telegram_id) 
-             DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
-            [userId, username, ctx.from.first_name, ctx.from.last_name]
+             DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+            [userId, username, ctx.from.first_name || null, ctx.from.last_name || null]
         );
-    } catch (error) {
-        console.error('Ошибка сохранения пользователя:', error);
+    } catch (columnError) {
+        // Если столбцы не существуют, используем упрощенный запрос
+        await db.query(
+            `INSERT INTO users (telegram_id, username) 
+             VALUES ($1, $2) 
+             ON CONFLICT (telegram_id) 
+             DO UPDATE SET username = EXCLUDED.username`,
+            [userId, username]
+        );
     }
-    
+} catch (error) {
+    console.error('Ошибка сохранения пользователя:', error);
+}
     // Если кто-то перешел по ссылке для вопроса
     if (ctx.startPayload && ctx.startPayload.startsWith('ask_')) {
         const targetUserId = ctx.startPayload.replace('ask_', '');
