@@ -1,0 +1,437 @@
+/* ask-style.css - тот же дизайн что и в style.css */
+:root {
+    --tg-bg-color: #0f0f0f;
+    --tg-secondary-bg: #1a1a1a;
+    --tg-text-color: #e1e1e1;
+    --tg-secondary-text: #999;
+    --tg-accent-color: #2e8de6;
+    --tg-accent-hover: #1a7cd6;
+    --tg-border-color: #2d2d2d;
+    --tg-input-bg: #242424;
+    --tg-bubble-incoming: #242424;
+    --tg-danger: #e53935;
+    --tg-success: #4caf50;
+    --tg-warning: #ff9800;
+    --tg-radius: 12px;
+    --tg-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--tg-bg-color);
+    color: var(--tg-text-color);
+    min-height: 100vh;
+}
+
+.app-container {
+    max-width: 100%;
+    min-height: 100vh;
+    background: var(--tg-bg-color);
+    display: flex;
+    flex-direction: column;
+}
+
+/* ШАПКА */
+.header {
+    background: var(--tg-secondary-bg);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--tg-border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--tg-text-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.header h1::before {
+    content: "✍️";
+    font-size: 24px;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--tg-radius);
+    border: 1px solid var(--tg-border-color);
+}
+
+.user-avatar {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--tg-accent-color), #6c5ce7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+}
+
+.user-details {
+    flex: 1;
+    overflow: hidden;
+}
+
+.username {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--tg-text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-id {
+    font-size: 13px;
+    color: var(--tg-secondary-text);
+    margin-top: 2px;
+}
+
+/* КОНТЕНТ */
+.tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 60px;
+}
+
+.target-user-card {
+    background: var(--tg-secondary-bg);
+    padding: 20px;
+    margin: 20px;
+    border-radius: var(--tg-radius);
+    border: 1px solid var(--tg-border-color);
+    text-align: center;
+}
+
+.target-user-card h2 {
+    color: var(--tg-text-color);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.target-user-card h2::before {
+    content: "👤";
+}
+
+.target-username {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--tg-accent-color);
+    margin: 10px 0;
+}
+
+.target-user-id {
+    color: var(--tg-secondary-text);
+    font-family: monospace;
+    background: var(--tg-input-bg);
+    padding: 6px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    font-size: 14px;
+}
+
+/* ФОРМА */
+.ask-form-container {
+    padding: 0 20px 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: var(--tg-text-color);
+    font-size: 16px;
+}
+
+.question-textarea {
+    width: 100%;
+    padding: 16px;
+    border: 1px solid var(--tg-border-color);
+    border-radius: 12px;
+    background: var(--tg-input-bg);
+    color: var(--tg-text-color);
+    font-family: inherit;
+    font-size: 15px;
+    resize: vertical;
+    min-height: 150px;
+    line-height: 1.5;
+    transition: all 0.2s;
+}
+
+.question-textarea:focus {
+    outline: none;
+    border-color: var(--tg-accent-color);
+    box-shadow: 0 0 0 2px rgba(46, 141, 230, 0.2);
+}
+
+.char-counter {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--tg-secondary-text);
+}
+
+.char-counter.limit {
+    color: var(--tg-danger);
+}
+
+.form-notice {
+    background: rgba(46, 141, 230, 0.1);
+    border: 1px solid rgba(46, 141, 230, 0.3);
+    border-radius: var(--tg-radius);
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.form-notice ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.form-notice li {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.form-notice li::before {
+    content: "✓";
+    color: var(--tg-accent-color);
+    flex-shrink: 0;
+}
+
+/* КНОПКИ */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+}
+
+.btn-primary {
+    background: var(--tg-accent-color);
+    color: white;
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+}
+
+.btn-primary:hover {
+    background: var(--tg-accent-hover);
+}
+
+.btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: var(--tg-input-bg);
+    color: var(--tg-text-color);
+    border: 1px solid var(--tg-border-color);
+}
+
+.btn-secondary:hover {
+    background: #2d2d2d;
+}
+
+/* РЕЗУЛЬТАТ */
+.result-container {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: var(--tg-radius);
+    text-align: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.result-success {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.result-error {
+    background: rgba(229, 57, 53, 0.1);
+    border: 1px solid rgba(229, 57, 53, 0.3);
+}
+
+/* СТАТУС БАР */
+.status-bar {
+    background: var(--tg-secondary-bg);
+    padding: 12px 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--tg-secondary-text);
+    border-top: 1px solid var(--tg-border-color);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tg-success);
+}
+
+.status-dot.error {
+    background: var(--tg-danger);
+}
+
+.status-dot.loading {
+    background: var(--tg-warning);
+    animation: pulse 1.5s infinite;
+}
+
+/* ЗАГРУЗКА */
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid var(--tg-border-color);
+    border-top-color: var(--tg-accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* АНИМАЦИИ */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* УВЕДОМЛЕНИЯ */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--tg-secondary-bg);
+    border: 1px solid var(--tg-border-color);
+    box-shadow: var(--tg-shadow);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 400px;
+    animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
+    transform: translateX(0);
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
+.notification.success {
+    border-left: 4px solid var(--tg-success);
+}
+
+.notification.error {
+    border-left: 4px solid var(--tg-danger);
+}
+
+.notification.warning {
+    border-left: 4px solid var(--tg-warning);
+}
+
+.notification-icon {
+    font-size: 20px;
+}
+
+/* АДАПТИВНОСТЬ */
+@media (max-width: 768px) {
+    .header h1 {
+        font-size: 18px;
+    }
+    
+    .target-user-card {
+        margin: 16px;
+        padding: 16px;
+    }
+    
+    .ask-form-container {
+        padding: 0 16px 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .header {
+        padding: 12px 16px;
+    }
+    
+    .user-info {
+        padding: 10px;
+    }
+    
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+    }
+}

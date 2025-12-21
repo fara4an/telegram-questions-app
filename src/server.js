@@ -506,181 +506,133 @@ app.get('/api/stats/:userId', async (req, res) => {
 async function generateChatImage(question) {
     try {
         const { createCanvas } = require('canvas');
-        const width = 800;
-        const padding = 40;
-        const avatarSize = 60;
-        const bubblePadding = 20;
+        const width = 1080; // Размер для Stories
+        const height = 1920;
         
-        // Рассчитываем высоту
-        const questionLines = splitText(question.text, 50);
-        const answerLines = question.answer ? splitText(question.answer, 50) : [];
-        
-        const lineHeight = 28;
-        const questionHeight = questionLines.length * lineHeight + bubblePadding * 2;
-        const answerHeight = answerLines.length * lineHeight + bubblePadding * 2;
-        const spacing = 40;
-        
-        const height = padding * 2 + questionHeight + answerHeight + spacing + avatarSize * 2 + 50;
-        
-        // Создаем canvas
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
         
-        // Градиентный фон (Telegram-style)
+        // Красивый градиентный фон
         const gradient = ctx.createLinearGradient(0, 0, width, height);
         gradient.addColorStop(0, '#1a1a2e');
-        gradient.addColorStop(1, '#16213e');
+        gradient.addColorStop(0.5, '#16213e');
+        gradient.addColorStop(1, '#0f3460');
+        
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
         
-        // Рисуем сетку
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < width; i += 50) {
+        // Декоративные элементы
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        for(let i = 0; i < 50; i++) {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            const radius = Math.random() * 2;
+            
             ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < height; i += 50) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(width, i);
-            ctx.stroke();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
         }
         
-        let y = padding + 30;
+        // Иконка
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 120px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬', width / 2, 400);
         
         // Заголовок
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px "Segoe UI", Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬 Анонимный вопрос', width / 2, y);
+        ctx.font = 'bold 64px Arial';
+        ctx.fillText('Анонимный вопрос', width / 2, 550);
         
-        y += 50;
-        
-        // ВОПРОС (слева)
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px "Segoe UI", Arial, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('Аноним', padding + avatarSize + 15, y + 20);
-        
-        // Аватар анонима
-        ctx.fillStyle = '#555555';
+        // Разделительная линия
+        ctx.strokeStyle = 'rgba(46, 141, 230, 0.5)';
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(padding + avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(width / 2 - 150, 600);
+        ctx.lineTo(width / 2 + 150, 600);
+        ctx.stroke();
         
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('?', padding + avatarSize/2, y + avatarSize/2 + 8);
+        // Вопрос
+        ctx.font = '36px Arial';
+        ctx.fillStyle = '#e1e1e1';
         
-        // Пузырь с вопросом
-        const questionBubbleX = padding + avatarSize + 15;
-        const questionBubbleY = y + 30;
-        const questionBubbleWidth = width - questionBubbleX - padding - 150;
+        const questionText = `"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"`;
+        wrapText(ctx, questionText, width / 2, 700, width - 200, 50);
         
-        // Рисуем пузырь
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        roundRect(ctx, questionBubbleX, questionBubbleY, questionBubbleWidth, questionHeight, 20, true, true);
-        
-        // Текст вопроса
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '18px "Segoe UI", Arial, sans-serif';
-        ctx.textAlign = 'left';
-        questionLines.forEach((line, i) => {
-            ctx.fillText(line, questionBubbleX + bubblePadding, questionBubbleY + bubblePadding + 25 + i * lineHeight);
-        });
-        
-        y += questionHeight + spacing;
-        
-        // ОТВЕТ (справа) - только если есть
+        // Ответ (если есть)
         if (question.answer) {
-            const responderName = question.to_username ? `@${question.to_username}` : 'Вы';
+            ctx.font = 'bold 48px Arial';
+            ctx.fillStyle = '#2e8de6';
+            ctx.fillText('Ответ:', width / 2, 900);
             
-            ctx.fillStyle = '#aaaaaa';
-            ctx.textAlign = 'right';
-            ctx.font = '16px "Segoe UI", Arial, sans-serif';
-            ctx.fillText(responderName, width - padding - avatarSize - 15, y + 20);
-            
-            // Аватар отвечающего
-            const avatarGradient = ctx.createLinearGradient(
-                width - padding - avatarSize, y,
-                width - padding, y + avatarSize
-            );
-            avatarGradient.addColorStop(0, '#2e8de6');
-            avatarGradient.addColorStop(1, '#1a7cd6');
-            ctx.fillStyle = avatarGradient;
-            ctx.beginPath();
-            ctx.arc(width - padding - avatarSize/2, y + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
-            ctx.fill();
-            
+            ctx.font = '32px Arial';
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 24px Arial';
-            ctx.textAlign = 'center';
-            const initial = responderName.charAt(0).toUpperCase();
-            ctx.fillText(initial, width - padding - avatarSize/2, y + avatarSize/2 + 8);
             
-            // Пузырь с ответом
-            const answerBubbleWidth = width - padding * 2 - avatarSize - 150;
-            const answerBubbleX = width - padding - answerBubbleWidth;
-            const answerBubbleY = y + 30;
-            
-            // Рисуем пузырь
-            const answerGradient = ctx.createLinearGradient(
-                answerBubbleX, answerBubbleY,
-                answerBubbleX + answerBubbleWidth, answerBubbleY + answerHeight
-            );
-            answerGradient.addColorStop(0, 'rgba(46, 141, 230, 0.3)');
-            answerGradient.addColorStop(1, 'rgba(26, 124, 214, 0.3)');
-            ctx.fillStyle = answerGradient;
-            ctx.strokeStyle = 'rgba(46, 141, 230, 0.5)';
-            ctx.lineWidth = 2;
-            roundRect(ctx, answerBubbleX, answerBubbleY, answerBubbleWidth, answerHeight, 20, true, true);
-            
-            // Текст ответа
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '18px "Segoe UI", Arial, sans-serif';
-            ctx.textAlign = 'left';
-            answerLines.forEach((line, i) => {
-                ctx.fillText(line, answerBubbleX + bubblePadding, answerBubbleY + bubblePadding + 25 + i * lineHeight);
-            });
-            
-            y += answerHeight + 30;
+            const answerText = `"${question.answer.substring(0, 100)}${question.answer.length > 100 ? '...' : ''}"`;
+            wrapText(ctx, answerText, width / 2, 1000, width - 200, 40);
+        } else {
+            ctx.font = 'bold 48px Arial';
+            ctx.fillStyle = '#4caf50';
+            ctx.fillText('Ответ отправлен!', width / 2, 950);
         }
         
-        // Футер
+        // Призыв к действию
+        ctx.font = 'bold 40px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('👇 Задай и мне вопрос!', width / 2, 1300);
+        
+        // Ссылка на бота
+        ctx.font = '28px Arial';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillText('t.me/dota2servicebot', width / 2, 1400);
+        
+        // Водяной знак
+        ctx.font = '18px Arial';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.font = '14px "Segoe UI", Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('t.me/anonymous_questions_bot', width / 2, height - 20);
+        ctx.fillText('Создано через @dota2servicebot', width / 2, 1850);
         
         return canvas.toBuffer('image/png');
         
     } catch (error) {
         console.error('Error in generateChatImage:', error);
-        // Возвращаем простое изображение с ошибкой
+        // Простая картинка с ошибкой
         const { createCanvas } = require('canvas');
         const canvas = createCanvas(800, 400);
         const ctx = canvas.getContext('2d');
         
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, 800, 400);
         
         ctx.fillStyle = '#ffffff';
-        ctx.font = '24px Arial';
+        ctx.font = 'bold 32px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('❌ Ошибка генерации изображения', 400, 200);
+        ctx.fillText('💬 Анонимный вопрос', 400, 150);
         
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px Arial';
-        ctx.fillText('Попробуйте позже', 400, 250);
+        ctx.font = '24px Arial';
+        ctx.fillText('t.me/dota2servicebot', 400, 250);
         
         return canvas.toBuffer('image/png');
     }
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(' ');
+    let line = '';
+    let testLine = '';
+    let testWidth;
+    
+    for(let n = 0; n < words.length; n++) {
+        testLine = line + words[n] + ' ';
+        testWidth = ctx.measureText(testLine).width;
+        
+        if (testWidth > maxWidth && n > 0) {
+            ctx.fillText(line, x, y);
+            line = words[n] + ' ';
+            y += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+    ctx.fillText(line, x, y);
 }
 
 function splitText(text, maxLength) {

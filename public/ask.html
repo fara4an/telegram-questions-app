@@ -5,176 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>✍️ Задать вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="style.css">
-    <style>
-        /* Дополнительные стили для ask.html */
-        .ask-page .header {
-            background: var(--tg-secondary-bg);
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--tg-border-color);
-        }
-        
-        .target-user-info {
-            background: var(--tg-secondary-bg);
-            padding: 20px;
-            margin: 16px;
-            border-radius: var(--tg-radius);
-            border: 1px solid var(--tg-border-color);
-            text-align: center;
-        }
-        
-        .target-user-info h2 {
-            color: var(--tg-text-color);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .target-username {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--tg-accent-color);
-            margin: 10px 0;
-        }
-        
-        .target-user-id {
-            color: var(--tg-secondary-text);
-            font-family: monospace;
-            background: var(--tg-input-bg);
-            padding: 6px 12px;
-            border-radius: 20px;
-            display: inline-block;
-            font-size: 14px;
-        }
-        
-        .question-form {
-            padding: 20px;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 12px;
-            font-weight: 600;
-            color: var(--tg-text-color);
-            font-size: 16px;
-        }
-        
-        .question-textarea {
-            width: 100%;
-            padding: 16px;
-            border: 1px solid var(--tg-border-color);
-            border-radius: 12px;
-            background: var(--tg-input-bg);
-            color: var(--tg-text-color);
-            font-family: inherit;
-            font-size: 15px;
-            resize: vertical;
-            min-height: 150px;
-            line-height: 1.5;
-            transition: all 0.2s;
-        }
-        
-        .question-textarea:focus {
-            outline: none;
-            border-color: var(--tg-accent-color);
-            box-shadow: 0 0 0 2px rgba(46, 141, 230, 0.2);
-        }
-        
-        .char-counter {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 10px;
-            font-size: 13px;
-            color: var(--tg-secondary-text);
-        }
-        
-        .char-counter.limit {
-            color: var(--tg-danger);
-        }
-        
-        .form-notice {
-            background: rgba(46, 141, 230, 0.1);
-            border: 1px solid rgba(46, 141, 230, 0.3);
-            border-radius: var(--tg-radius);
-            padding: 16px;
-            margin-bottom: 20px;
-        }
-        
-        .form-notice ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .form-notice li {
-            margin-bottom: 8px;
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 14px;
-        }
-        
-        .form-notice li::before {
-            content: "✓";
-            color: var(--tg-accent-color);
-            flex-shrink: 0;
-        }
-        
-        .submit-btn {
-            width: 100%;
-            padding: 16px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 12px;
-            border: none;
-            background: var(--tg-accent-color);
-            color: white;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .submit-btn:hover {
-            background: var(--tg-accent-hover);
-        }
-        
-        .submit-btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        
-        .result-container {
-            margin-top: 20px;
-            padding: 20px;
-            border-radius: var(--tg-radius);
-            text-align: center;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .result-success {
-            background: rgba(76, 175, 80, 0.1);
-            border: 1px solid rgba(76, 175, 80, 0.3);
-        }
-        
-        .result-error {
-            background: rgba(229, 57, 53, 0.1);
-            border: 1px solid rgba(229, 57, 53, 0.3);
-        }
-    </style>
+    <link rel="stylesheet" href="ask-style.css">
 </head>
 <body>
-    <div class="app-container ask-page">
-        <!-- ШАПКА - как в index.html -->
+    <div class="app-container">
+        <!-- ШАПКА -->
         <div class="header">
             <h1>✍️ Задать вопрос</h1>
             <div class="user-info">
@@ -187,16 +22,16 @@
         </div>
         
         <!-- КОНТЕНТ -->
-        <div class="tab-content" style="padding: 0;">
-            <!-- ИНФОРМАЦИЯ О ЦЕЛЕВОМ ПОЛЬЗОВАТЕЛЕ -->
-            <div class="target-user-info">
-                <h2>👤 Вопрос для:</h2>
+        <div class="tab-content">
+            <!-- КАРТОЧКА ЦЕЛЕВОГО ПОЛЬЗОВАТЕЛЯ -->
+            <div class="target-user-card">
+                <h2>Вопрос для:</h2>
                 <div class="target-username" id="targetUsername">Загрузка...</div>
                 <div class="target-user-id" id="targetUserId">ID: ...</div>
             </div>
             
             <!-- ФОРМА ВОПРОСА -->
-            <div class="question-form">
+            <div class="ask-form-container">
                 <div class="form-group">
                     <label for="questionText">Ваш вопрос:</label>
                     <textarea 
@@ -226,7 +61,7 @@
                 
                 <!-- КНОПКА ОТПРАВКИ -->
                 <button 
-                    class="submit-btn" 
+                    class="btn btn-primary" 
                     onclick="sendQuestion()" 
                     id="sendButton"
                 >
@@ -238,14 +73,14 @@
             </div>
         </div>
         
-        <!-- СТАТУС БАР - как в index.html -->
+        <!-- СТАТУС БАР -->
         <div class="status-bar">
             <span id="statusText">🟢 Готово к отправке</span>
         </div>
     </div>
     
     <script>
-        // Инициализация как в index.html
+        // Код из ask.html (тот же что и раньше, но с добавлением)
         let tg = window.Telegram?.WebApp;
         let currentUserId = null;
         let targetUserId = null;
@@ -331,14 +166,12 @@
                 const length = this.value.length;
                 charCount.textContent = length;
                 
-                // Обновляем цвет счетчика
                 if (length > 900) {
                     charCounter.classList.add('limit');
                 } else {
                     charCounter.classList.remove('limit');
                 }
                 
-                // Показываем/скрываем предупреждение
                 if (length > 0 && length < 5) {
                     warning.style.display = 'inline';
                 } else {
@@ -491,7 +324,6 @@
             if (statusElement) {
                 statusElement.textContent = status;
                 
-                // Обновляем цвет точки
                 const statusDot = statusElement.querySelector('.status-dot');
                 if (statusDot) {
                     statusDot.className = 'status-dot';
@@ -503,6 +335,27 @@
                     }
                 }
             }
+        }
+        
+        // Функция показа уведомления
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
+            
+            notification.innerHTML = `
+                <div class="notification-icon">${icons[type] || '💡'}</div>
+                <div>${message}</div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 3000);
         }
     </script>
 </body>
