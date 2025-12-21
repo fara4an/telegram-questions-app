@@ -546,8 +546,22 @@ async function submitAnswer() {
     }
 }
 
-function openShareModal(questionId) {
-    showNotification('Функция шеринга в разработке', 'info');
+async function openShareModal(questionId) {
+    try {
+        showNotification('Подготавливаем ответ...', 'info');
+        
+        const response = await fetch(`/api/question/${questionId}`);
+        if (!response.ok) throw new Error('Вопрос не найден');
+        
+        const question = await response.json();
+        
+        // Показываем простую модалку
+        showSimpleShareModal(question);
+        
+    } catch (error) {
+        console.error('Ошибка открытия шеринга:', error);
+        showNotification('Ошибка загрузки вопроса', 'error');
+    }
 }
 
 function closeShareModal() {

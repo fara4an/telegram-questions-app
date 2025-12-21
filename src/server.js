@@ -855,6 +855,51 @@ async function startServer() {
     }
 }
 
+// В server.js добавляем endpoint для шеринга через бота
+app.post('/api/share-to-chat', async (req, res) => {
+    try {
+        const { userId, questionId, chatId } = req.body;
+        
+        const questionResult = await db.query(
+            `SELECT q.* FROM questions q WHERE q.id = $1`,
+            [questionId]
+        );
+        
+        if (questionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Question not found' });
+        }
+        
+        const question = questionResult.rows[0];
+        const userLink = `https://t.me/${bot.botInfo.username}?start=ask_${userId}`;
+        
+        // Отправляем сообщение через бота
+        await bot.telegram.sendMessage(
+            chatId || userId, // Если нет chatId, шлём самому пользователю
+            `💬 *Ответ на анонимный вопрос!*\n\n` +
+            `📝 *Вопрос:* ${question.text.substring(0, 150)}${question.text.length > 150 ? '...' : ''}\n\n` +
+            `💡 *Ответ:* ${question.answer ? question.answer.substring(0, 150) + (question.answer.length > 150 ? '...' : '') : 'Смотри в приложении'}\n\n` +
+            `👇 *Задай и мне вопрос:*\n${userLink}`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        {
+                            text: '✍️ Задать вопрос',
+                            url: userLink
+                        }
+                    ]]
+                }
+            }
+        );
+        
+        res.json({ success: true, message: 'Sent to chat' });
+        
+    } catch (error) {
+        console.error('Error sharing to chat:', error);
+        res.status(500).json({ error: 'Sharing failed' });
+    }
+});
+
 // Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

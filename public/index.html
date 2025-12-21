@@ -240,141 +240,200 @@ async function shareToTelegramChats(imageUrl, text) {
     }
 }
 
-// ГЛАВНАЯ ФУНКЦИЯ ШЕРИНГА
+// === НОВЫЙ КОД ШЕРИНГА ===
+
+// Главная функция шеринга
 async function shareAnswer(questionId) {
     try {
-        showNotification('🖼️ Готовим ответ для шеринга...', 'info');
+        showNotification('🖼️ Готовим картинку для отправки...', 'info');
         
-        // 1. Получаем данные вопроса
+        // Получаем данные вопроса
         const response = await fetch(`/api/question/${questionId}`);
         if (!response.ok) throw new Error('Вопрос не найден');
         const question = await response.json();
         
-        // 2. Генерируем картинку на клиенте (чтобы не скачивать)
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Размеры для Telegram
-        canvas.width = 1080;
-        canvas.height = 1080; // Квадрат для лучшего отображения
-        
-        // Рисуем красивую картинку
-        // ... (ваш код генерации картинки из server.js можно адаптировать)
-        // Для простоты - базовый дизайн:
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(0, 0, 1080, 1080);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 60px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬 Анонимный вопрос', 540, 200);
-        
-        ctx.font = '40px Arial';
-        const questionText = `"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"`;
-        wrapText(ctx, questionText, 540, 400, 1000, 50);
-        
-        if (question.answer) {
-            ctx.font = 'bold 48px Arial';
-            ctx.fillStyle = '#2e8de6';
-            ctx.fillText('Ответ:', 540, 600);
-            
-            ctx.font = '36px Arial';
-            ctx.fillStyle = '#ffffff';
-            const answerText = `"${question.answer.substring(0, 100)}${question.answer.length > 100 ? '...' : ''}"`;
-            wrapText(ctx, answerText, 540, 700, 1000, 40);
+        // Проверяем Telegram WebApp
+        if (!tg) {
+            showNotification('Откройте в Telegram WebApp', 'error');
+            return;
         }
         
-        ctx.font = '32px Arial';
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillText('t.me/dota2servicebot', 540, 1000);
+        // ПОПРОБУЕМ ТРИ ВАРИАНТА:
         
-        // 3. Конвертируем в Blob URL
-        canvas.toBlob(async (blob) => {
-            const imageUrl = URL.createObjectURL(blob);
-            
-            // 4. Готовим текст
-            const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
-            const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n${userLink}`;
-            
-            // 5. Показываем модалку с выбором
-            const modalHTML = `
-                <div class="modal active" id="shareModal">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3>🖼️ Поделиться ответом</h3>
-                            <button class="btn-close" onclick="closeShareModal()">×</button>
-                        </div>
-                        <div class="modal-body">
-                            <div style="text-align: center; margin-bottom: 20px;">
-                                <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px;" alt="Превью">
-                            </div>
-                            
-                            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
-                                <button class="btn btn-primary" onclick="shareToChats('${imageUrl}', \`${shareText.replace(/`/g, '\\`')}\`)">
-                                    💬 Отправить в Telegram чат
-                                </button>
-                                <button class="btn btn-secondary" onclick="downloadImage('${imageUrl}')">
-                                    📥 Скачать картинку
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Удаляем старую модалку
-            const existingModal = document.getElementById('shareModal');
-            if (existingModal) existingModal.remove();
-            
-            // Добавляем новую
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            
-        }, 'image/png');
+        // ВАРИАНТ 1: Использовать sharePhoto если доступен
+        if (tg.sharePhoto) {
+            await sharePhotoMethod(question);
+            return;
+        }
+        
+        // ВАРИАНТ 2: Создать инлайн-кнопку с фото
+        if (tg.showPopup) {
+            await showPopupWithPhoto(question);
+            return;
+        }
+        
+        // ВАРИАНТ 3: Отправить только текст со ссылкой
+        await shareTextOnly(question);
         
     } catch (error) {
         console.error('Ошибка шеринга:', error);
-        showNotification('Ошибка подготовки шеринга', 'error');
+        showNotification('Не удалось отправить', 'error');
     }
 }
 
-// Вспомогательные функции
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = text.split(' ');
-    let line = '';
+// Вариант 1: Отправить фото через sharePhoto
+async function sharePhotoMethod(question) {
+    // Генерируем картинку на сервере
+    const imageResponse = await fetch(`/api/generate-image/${question.id}`);
     
-    for(let n = 0; n < words.length; n++) {
-        const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
+    if (imageResponse.ok) {
+        // Конвертируем в base64
+        const blob = await imageResponse.blob();
+        const reader = new FileReader();
         
-        if (testWidth > maxWidth && n > 0) {
-            ctx.fillText(line, x, y);
-            line = words[n] + ' ';
-            y += lineHeight;
-        } else {
-            line = testLine;
-        }
+        reader.onloadend = function() {
+            const base64data = reader.result;
+            const shareText = `💬 Мой ответ на вопрос!\n\n"${question.text.substring(0, 50)}..."\n\nЗадай мне вопрос: t.me/dota2servicebot?start=ask_${userId}`;
+            
+            // Пробуем отправить фото
+            tg.sharePhoto(base64data, shareText);
+            showNotification('Отправляем фото...', 'success');
+        };
+        
+        reader.readAsDataURL(blob);
+    } else {
+        // Фолбэк на текст
+        await shareTextOnly(question);
     }
-    ctx.fillText(line, x, y);
 }
 
-async function shareToChats(imageUrl, text) {
-    await shareToTelegramChats(imageUrl, text);
-    closeShareModal();
+// Вариант 2: Показать попап с инлайн-кнопкой
+async function showPopupWithPhoto(question) {
+    const shareText = `💬 Ответ на анонимный вопрос!\n\n"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"\n\n👇 Нажми кнопку чтобы поделиться`;
+    
+    tg.showPopup({
+        title: 'Поделиться ответом',
+        message: shareText,
+        buttons: [{
+            id: 'share',
+            type: 'default',
+            text: '📤 Поделиться в чат'
+        }]
+    }, function(buttonId) {
+        if (buttonId === 'share') {
+            // Отправляем сообщение в текущий чат
+            tg.sendData(JSON.stringify({
+                action: 'share_answer',
+                question_id: question.id,
+                text: question.text,
+                answer: question.answer
+            }));
+            showNotification('Ответ отправлен в чат!', 'success');
+        }
+    });
 }
 
-function downloadImage(imageUrl) {
-    const a = document.createElement('a');
-    a.href = imageUrl;
-    a.download = `ответ-${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    alert('Картинка скачана!');
+// Вариант 3: Только текст (фолбэк)
+async function shareTextOnly(question) {
+    const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+    const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n${question.answer ? `Мой ответ: "${question.answer.substring(0, 80)}..."\n\n` : ''}👇 Задай и мне анонимный вопрос!\n${userLink}`;
+    
+    // Используем Telegram Sharing
+    if (tg.openTelegramLink) {
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=${encodeURIComponent(shareText)}`;
+        tg.openTelegramLink(shareUrl);
+    } else {
+        // Копируем в буфер
+        navigator.clipboard.writeText(shareText);
+        showNotification('Текст скопирован! Вставьте в чат.', 'success');
+    }
 }
 
+// === УПРОЩЕННАЯ МОДАЛКА ===
+function showSimpleShareModal(question) {
+    const modalHTML = `
+        <div class="modal active" id="shareModal">
+            <div class="modal-content" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h3>🖼️ Поделиться ответом</h3>
+                    <button class="btn-close" onclick="closeShareModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p style="text-align: center; margin-bottom: 20px; color: var(--tg-secondary-text);">
+                        Ответ будет отправлен в текущий Telegram чат
+                    </p>
+                    
+                    <div style="text-align: center; margin: 20px 0;">
+                        <div style="font-size: 48px;">💬</div>
+                        <p style="margin-top: 10px; font-size: 14px;">
+                            "${question.text.substring(0, 60)}${question.text.length > 60 ? '...' : ''}"
+                        </p>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button class="btn btn-primary" onclick="sendToTelegramChat(${question.id})">
+                            📤 Отправить в Telegram
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeShareModal()">
+                            Отмена
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const existingModal = document.getElementById('shareModal');
+    if (existingModal) existingModal.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+// Отправка в Telegram чат
+async function sendToTelegramChat(questionId) {
+    try {
+        const response = await fetch(`/api/question/${questionId}`);
+        const question = await response.json();
+        
+        const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+        const message = `💬 Ответил на анонимный вопрос!\n\n"${question.text}"\n\nМой ответ: "${question.answer || 'Смотри в приложении'}"\n\nЗадай и мне вопрос: ${userLink}`;
+        
+        // Используем Telegram WebApp API для отправки
+        if (tg.sendData) {
+            tg.sendData(JSON.stringify({
+                type: 'share_answer',
+                question: question.text,
+                answer: question.answer,
+                link: userLink
+            }));
+            showNotification('✅ Ответ отправлен!', 'success');
+        } else if (tg.openTelegramLink) {
+            const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=${encodeURIComponent(message)}`;
+            tg.openTelegramLink(shareUrl);
+        } else {
+            navigator.clipboard.writeText(message);
+            showNotification('📋 Текст скопирован! Вставьте в чат.', 'success');
+        }
+        
+        closeShareModal();
+        
+    } catch (error) {
+        console.error('Ошибка отправки:', error);
+        showNotification('❌ Ошибка отправки', 'error');
+    }
+}
+
+// Закрыть модалку
 function closeShareModal() {
     const modal = document.getElementById('shareModal');
     if (modal) modal.remove();
+}
+
+// === ОБНОВЛЯЕМ ВЫЗОВ В app.js ===
+// В файле app.js меняем вызов:
+function openShareModal(questionId) {
+    // Вместо shareAnswer() вызываем новую функцию
+    shareAnswer(questionId);
 }
     </script>
 </body>
