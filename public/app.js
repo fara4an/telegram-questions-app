@@ -36,13 +36,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 // ========== ИНИЦИАЛИЗАЦИЯ UI ==========
 function initUI() {
     // Обновляем информацию пользователя
-    document.getElementById('username').textContent = username;
+    document.getElementById('username').textContent = username || 'Пользователь';
     document.getElementById('userId').textContent = `ID: ${userId}`;
-    document.getElementById('profileName').textContent = username;
+    document.getElementById('profileName').textContent = username || 'Пользователь';
     document.getElementById('profileId').textContent = userId;
     
+    // Создаем иконку для аватара
+    const avatarIcon = document.getElementById('userAvatar');
+    if (avatarIcon) {
+        const firstLetter = username ? username.charAt(0).toUpperCase() : 'U';
+        avatarIcon.textContent = firstLetter;
+    }
+    
     // Генерируем ссылку для вопросов
-    const botUsername = 'dota2servicebot'; // ЗАМЕНИТЕ НАСТОЯЩИЙ USERNAME БОТА!
+    const botUsername = 'ваш_бот_username'; // ЗАМЕНИТЕ НАСТОЯЩИЙ USERNAME БОТА!
     const shareLink = `https://t.me/${botUsername}?start=ask_${userId}`;
     document.getElementById('shareLink').textContent = shareLink;
     
@@ -63,6 +70,7 @@ async function loadAllData() {
     } catch (error) {
         console.error('Ошибка загрузки:', error);
         updateStatus('🔴 Ошибка подключения');
+        showNotification('Ошибка подключения к серверу', 'error');
     }
 }
 
@@ -70,8 +78,9 @@ async function loadAllData() {
 async function loadIncomingQuestions() {
     try {
         const response = await fetch(`/api/questions/incoming/${userId}`);
-        const questions = await response.json();
+        if (!response.ok) throw new Error('Ошибка сервера');
         
+        const questions = await response.json();
         renderIncomingQuestions(questions);
         updateBadge('incoming', questions.length);
     } catch (error) {
@@ -79,9 +88,10 @@ async function loadIncomingQuestions() {
         document.getElementById('incoming-list').innerHTML = `
             <div class="empty-state">
                 <div class="icon">⚠️</div>
-                <p>Не удалось загрузить вопросы</p>
-                <button class="btn btn-secondary" onclick="loadIncomingQuestions()">
-                    Повторить
+                <h3>Не удалось загрузить</h3>
+                <p>Проверьте подключение к интернету</p>
+                <button class="btn btn-secondary" onclick="loadIncomingQuestions()" style="margin-top: 20px;">
+                    🔄 Повторить
                 </button>
             </div>
         `;
@@ -92,8 +102,9 @@ async function loadIncomingQuestions() {
 async function loadSentQuestions() {
     try {
         const response = await fetch(`/api/questions/sent/${userId}`);
-        const questions = await response.json();
+        if (!response.ok) throw new Error('Ошибка сервера');
         
+        const questions = await response.json();
         renderSentQuestions(questions);
         updateBadge('sent', questions.length);
     } catch (error) {
@@ -101,9 +112,10 @@ async function loadSentQuestions() {
         document.getElementById('sent-list').innerHTML = `
             <div class="empty-state">
                 <div class="icon">⚠️</div>
-                <p>Не удалось загрузить отправленные вопросы</p>
-                <button class="btn btn-secondary" onclick="loadSentQuestions()">
-                    Повторить
+                <h3>Не удалось загрузить</h3>
+                <p>Попробуйте позже</p>
+                <button class="btn btn-secondary" onclick="loadSentQuestions()" style="margin-top: 20px;">
+                    🔄 Повторить
                 </button>
             </div>
         `;
@@ -113,22 +125,24 @@ async function loadSentQuestions() {
 // Обновить статистику
 async function updateStats() {
     try {
-        const [incomingRes, sentRes] = await Promise.all([
+        const [incomingRes, sentRes, answeredRes] = await Promise.all([
             fetch(`/api/questions/incoming/${userId}`),
-            fetch(`/api/questions/sent/${userId}`)
+            fetch(`/api/questions/sent/${userId}`),
+            fetch(`/api/questions/answered/${userId}`)
         ]);
         
         const incoming = await incomingRes.json();
         const sent = await sentRes.json();
-        
-        // Получаем отвеченные вопросы
-        const answeredRes = await fetch(`/api/questions/answered/${userId}`);
         const answered = await answeredRes.json();
         
-        document.getElementById('statTotal').textContent = incoming.length + sent.length;
+        const totalQuestions = incoming.length + sent.length;
+        const answeredCount = answered.length;
+        
+        document.getElementById('statTotal').textContent = totalQuestions;
         document.getElementById('statReceived').textContent = incoming.length;
         document.getElementById('statSent').textContent = sent.length;
-        document.getElementById('statAnswered').textContent = answered.length;
+        document.getElementById('statAnswered').textContent = answeredCount;
+        
     } catch (error) {
         console.error('Ошибка статистики:', error);
     }
@@ -142,29 +156,38 @@ function renderIncomingQuestions(questions) {
     if (!questions || questions.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="icon">📭</div>
-                <h3>Нет новых вопросов</h3>
-                <p>Поделитесь своей ссылкой, чтобы получать вопросы</p>
+                <div class="icon">💭</div>
+                <h3>Нет вопросов</h3>
+                <p>Поделитесь ссылкой, чтобы получать вопросы от друзей</p>
+                <button class="btn btn-primary" onclick="shareToTelegram()" style="margin-top: 20px;">
+                    📤 Поделиться ссылкой
+                </button>
             </div>
         `;
         return;
     }
     
-    container.innerHTML = questions.map(question => `
-        <div class="question-card ${question.is_answered ? 'answered-question-card' : ''}" data-id="${question.id}">
+    container.innerHTML = questions.map(question => {
+        const isAnswered = question.is_answered;
+        const cardClass = isAnswered ? 'question-card answered' : 'question-card';
+        
+        return `
+        <div class="${cardClass}" data-id="${question.id}">
             <div class="question-meta">
-                <span>${formatDate(question.created_at)}</span>
-                <span>${question.from_username ? `От: ${question.from_username}` : 'Аноним'}</span>
+                <div class="question-date">${formatDate(question.created_at)}</div>
+                <div class="question-from">
+                    ${question.from_username ? `@${question.from_username}` : 'Аноним'}
+                </div>
             </div>
             <div class="question-text">${escapeHtml(question.text)}</div>
-            ${question.is_answered ? `
+            ${isAnswered ? `
                 <div class="answer-bubble">
-                    <strong>Ваш ответ:</strong><br>
-                    ${escapeHtml(question.answer)}
+                    <strong>Ваш ответ:</strong>
+                    <div style="margin-top: 8px;">${escapeHtml(question.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-info" onclick="shareAnswerAsImage(${question.id})">
-                        🖼️ Выложить ответ
+                    <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
+                        🖼️ Поделиться картинкой
                     </button>
                     <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
                         📋 Копировать
@@ -176,12 +199,13 @@ function renderIncomingQuestions(questions) {
                         ✍️ Ответить
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
-                        ❌ Удалить
+                        🗑️ Удалить
                     </button>
                 </div>
             `}
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Рендер отправленных вопросов
@@ -192,28 +216,34 @@ function renderSentQuestions(questions) {
         container.innerHTML = `
             <div class="empty-state">
                 <div class="icon">📤</div>
-                <h3>Нет отправленных вопросов</h3>
-                <p>Задайте вопросы другим пользователям</p>
+                <h3>Нет отправленных</h3>
+                <p>Вы еще не задавали вопросы другим пользователям</p>
             </div>
         `;
         return;
     }
     
-    container.innerHTML = questions.map(question => `
-        <div class="question-card sent-question-card" data-id="${question.id}">
+    container.innerHTML = questions.map(question => {
+        const isAnswered = question.is_answered;
+        const cardClass = isAnswered ? 'question-card answered' : 'question-card sent';
+        
+        return `
+        <div class="${cardClass}" data-id="${question.id}">
             <div class="question-meta">
-                <span>${formatDate(question.created_at)}</span>
-                <span>Кому: ${question.to_username || `ID ${question.to_user_id}`}</span>
+                <div class="question-date">${formatDate(question.created_at)}</div>
+                <div class="question-from">
+                    Кому: ${question.to_username ? `@${question.to_username}` : `ID ${question.to_user_id}`}
+                </div>
             </div>
             <div class="question-text">${escapeHtml(question.text)}</div>
-            ${question.is_answered ? `
-                <div class="answer-bubble" style="background: #d4edda;">
-                    <strong>Ответ:</strong><br>
-                    ${escapeHtml(question.answer)}
+            ${isAnswered ? `
+                <div class="answer-bubble">
+                    <strong>Ответ:</strong>
+                    <div style="margin-top: 8px;">${escapeHtml(question.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-info" onclick="shareAnswerAsImage(${question.id})">
-                        🖼️ Выложить ответ
+                    <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
+                        🖼️ Поделиться картинкой
                     </button>
                     <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
                         📋 Копировать
@@ -221,13 +251,14 @@ function renderSentQuestions(questions) {
                 </div>
             ` : `
                 <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="deleteQuestion(${question.id})">
-                        ❌ Удалить вопрос
+                    <button class="btn btn-secondary" onclick="deleteQuestion(${question.id})" style="background: var(--tg-input-bg);">
+                        🗑️ Удалить вопрос
                     </button>
                 </div>
             `}
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // ========== ОТВЕТ НА ВОПРОС ==========
@@ -236,13 +267,20 @@ function openAnswerModal(questionId) {
     
     // Находим вопрос
     const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
+    if (!questionCard) {
+        showNotification('Вопрос не найден', 'error');
+        return;
+    }
+    
     const questionText = questionCard.querySelector('.question-text').textContent;
     
     // Показываем превью вопроса
     document.getElementById('questionPreview').innerHTML = `
-        <div class="question-preview">
-            <strong>Вопрос:</strong>
-            <div class="preview-text">${questionText}</div>
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 14px; color: var(--tg-secondary-text); margin-bottom: 8px;">Вопрос:</div>
+            <div style="background: var(--tg-input-bg); padding: 12px; border-radius: 8px; border-left: 3px solid var(--tg-accent-color);">
+                ${questionText}
+            </div>
         </div>
     `;
     
@@ -261,14 +299,21 @@ async function submitAnswer() {
     const answerText = document.getElementById('answerText').value.trim();
     
     if (!answerText) {
-        alert('Введите ответ');
+        showNotification('Введите ответ', 'warning');
+        return;
+    }
+    
+    if (answerText.length < 2) {
+        showNotification('Ответ слишком короткий', 'warning');
         return;
     }
     
     if (!currentQuestionId) {
-        alert('Ошибка: вопрос не выбран');
+        showNotification('Ошибка: вопрос не выбран', 'error');
         return;
     }
+    
+    showNotification('Отправка ответа...', 'info', 0);
     
     try {
         const response = await fetch(`/api/questions/${currentQuestionId}/answer`, {
@@ -282,59 +327,135 @@ async function submitAnswer() {
         });
         
         if (response.ok) {
-            alert('✅ Ответ сохранен!');
             closeAnswerModal();
+            showNotification('✅ Ответ сохранен!', 'success');
             await loadAllData(); // Перезагружаем все данные
         } else {
-            throw new Error('Ошибка сервера');
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
         }
     } catch (error) {
         console.error('Ошибка отправки ответа:', error);
-        alert('❌ Ошибка сохранения ответа');
+        showNotification('❌ Ошибка сохранения ответа', 'error');
     }
 }
 
-// ========== ВЫЛОЖЕНИЕ ОТВЕТА ==========
+// ========== ВЫЛОЖЕНИЕ ОТВЕТА - ИСПРАВЛЕННАЯ ВЕРСИЯ ==========
 async function shareAnswerAsImage(questionId) {
     try {
-        updateStatus('🖼️ Генерация картинки...');
+        // Показываем прогресс
+        const progressId = `progress-${Date.now()}`;
+        showNotification('🖼️ Генерация картинки...', 'info', 0, progressId);
         
+        // Добавляем прогресс бар в уведомление
+        const notification = document.querySelector(`[data-id="${progressId}"]`);
+        if (notification) {
+            notification.innerHTML += `
+                <div class="progress-bar" style="margin-top: 10px;">
+                    <div class="progress-fill" id="progress-fill-${progressId}"></div>
+                </div>
+            `;
+            
+            // Анимируем прогресс
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                const fill = document.getElementById(`progress-fill-${progressId}`);
+                if (fill) fill.style.width = `${progress}%`;
+                if (progress >= 90) clearInterval(interval);
+            }, 200);
+        }
+        
+        // Генерируем изображение через сервер
         const response = await fetch(`/api/generate-image/${questionId}`);
         
         if (!response.ok) {
-            throw new Error('Ошибка генерации');
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || 'Ошибка генерации изображения');
         }
         
+        // Получаем blob картинки
         const blob = await response.blob();
+        
+        // Завершаем прогресс
+        const fill = document.getElementById(`progress-fill-${progressId}`);
+        if (fill) fill.style.width = '100%';
+        
+        // Создаем URL для изображения
         const url = URL.createObjectURL(blob);
         
-        if (tg) {
-            const file = new File([blob], 'answer.png', { type: 'image/png' });
-            tg.sharePhoto(url, 'Мой ответ на анонимный вопрос');
+        // Если в Telegram - используем sharePhoto
+        if (tg && tg.sharePhoto) {
+            // Создаем временную ссылку
+            const tempUrl = URL.createObjectURL(blob);
+            
+            // Для Telegram Web App нужно использовать специальный метод
+            try {
+                // Показываем изображение в новом окне для скачивания
+                showNotification('✅ Картинка готова! Нажмите, чтобы сохранить', 'success');
+                
+                // Открываем изображение в новой вкладке для скачивания
+                setTimeout(() => {
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = tempUrl;
+                    downloadLink.download = `question-answer-${questionId}.png`;
+                    downloadLink.click();
+                }, 1000);
+                
+            } catch (shareError) {
+                console.log('Telegram share не доступен:', shareError);
+                // Открываем в новой вкладке
+                window.open(tempUrl, '_blank');
+            }
+            
         } else {
-            window.open(url, '_blank');
+            // В браузере - скачиваем файл
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = `question-answer-${questionId}.png`;
+            downloadLink.click();
+            
+            showNotification('✅ Картинка скачана!', 'success');
         }
         
-        updateStatus('✅ Картинка сгенерирована');
+        // Очищаем уведомление через 3 секунды
+        setTimeout(() => {
+            const notification = document.querySelector(`[data-id="${progressId}"]`);
+            if (notification) notification.remove();
+        }, 3000);
         
     } catch (error) {
         console.error('Ошибка генерации картинки:', error);
-        alert('❌ Не удалось сгенерировать картинку');
-        updateStatus('🔴 Ошибка генерации');
+        showNotification(`❌ Ошибка: ${error.message}`, 'error');
     }
 }
 
 function copyAnswerText(questionId) {
     const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
-    const questionText = questionCard.querySelector('.question-text').textContent;
-    const answerText = questionCard.querySelector('.answer-bubble')?.textContent.replace('Ваш ответ:\n', '').replace('Ответ:\n', '').trim() || '';
+    if (!questionCard) {
+        showNotification('Вопрос не найден', 'error');
+        return;
+    }
     
-    const fullText = answerText ? `Вопрос: ${questionText}\n\nОтвет: ${answerText}` : `Вопрос: ${questionText}`;
+    const questionText = questionCard.querySelector('.question-text').textContent;
+    const answerBubble = questionCard.querySelector('.answer-bubble');
+    
+    if (!answerBubble) {
+        showNotification('Ответ не найден', 'warning');
+        return;
+    }
+    
+    const answerText = answerBubble.textContent
+        .replace('Ваш ответ:', '')
+        .replace('Ответ:', '')
+        .trim();
+    
+    const fullText = `Вопрос: ${questionText}\n\nОтвет: ${answerText}`;
     
     navigator.clipboard.writeText(fullText).then(() => {
-        alert('✅ Текст скопирован!');
+        showNotification('✅ Текст скопирован в буфер!', 'success');
     }).catch(() => {
-        alert('❌ Не удалось скопировать');
+        showNotification('❌ Не удалось скопировать', 'error');
     });
 }
 
@@ -348,14 +469,14 @@ async function deleteQuestion(questionId) {
         });
         
         if (response.ok) {
-            alert('❌ Вопрос удалён');
+            showNotification('✅ Вопрос удалён', 'success');
             await loadAllData();
         } else {
             throw new Error('Ошибка сервера');
         }
     } catch (error) {
         console.error('Ошибка удаления:', error);
-        alert('❌ Не удалось удалить вопрос');
+        showNotification('❌ Не удалось удалить вопрос', 'error');
     }
 }
 
@@ -364,19 +485,47 @@ function copyShareLink() {
     const link = document.getElementById('shareLink').textContent;
     
     navigator.clipboard.writeText(link).then(() => {
-        alert('✅ Ссылка скопирована!');
+        showNotification('✅ Ссылка скопирована!', 'success');
     }).catch(() => {
-        alert('❌ Не удалось скопировать');
+        showNotification('❌ Не удалось скопировать', 'error');
     });
 }
 
 function shareToTelegram() {
     const link = document.getElementById('shareLink').textContent;
     
-    if (tg) {
+    if (tg && tg.openTelegramLink) {
         tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`);
     } else {
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`, '_blank');
+        // Открываем в новом окне
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`, '_blank', 'noopener,noreferrer');
+    }
+}
+
+// ========== УВЕДОМЛЕНИЯ ==========
+function showNotification(message, type = 'info', duration = 3000, id = null) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.setAttribute('data-id', id || `notification-${Date.now()}`);
+    
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: '💡'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-icon">${icons[type] || '💡'}</div>
+        <div>${message}</div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    if (duration > 0) {
+        setTimeout(() => {
+            notification.remove();
+        }, duration);
     }
 }
 
@@ -392,6 +541,9 @@ function setupTabs() {
             
             this.classList.add('active');
             document.getElementById(`content-${tabId}`).classList.add('active');
+            
+            // Прокручиваем к началу
+            document.querySelector('.tab-content').scrollTop = 0;
         });
     });
 }
@@ -400,7 +552,7 @@ function updateBadge(type, count) {
     const badge = document.getElementById(`${type}Badge`);
     if (badge) {
         if (count > 0) {
-            badge.textContent = count;
+            badge.textContent = count > 99 ? '99+' : count;
             badge.style.display = 'flex';
         } else {
             badge.style.display = 'none';
@@ -409,7 +561,22 @@ function updateBadge(type, count) {
 }
 
 function updateStatus(status) {
-    document.getElementById('statusText').textContent = status;
+    const statusElement = document.getElementById('statusText');
+    if (statusElement) {
+        statusElement.textContent = status;
+        
+        // Обновляем цвет точки
+        const statusDot = statusElement.querySelector('.status-dot');
+        if (statusDot) {
+            if (status.includes('🟢')) {
+                statusDot.className = 'status-dot';
+            } else if (status.includes('🔴')) {
+                statusDot.className = 'status-dot error';
+            } else {
+                statusDot.className = 'status-dot loading';
+            }
+        }
+    }
 }
 
 function formatDate(dateString) {
@@ -418,23 +585,47 @@ function formatDate(dateString) {
         const now = new Date();
         const diff = now - date;
         
-        if (diff < 60000) return 'только что';
-        if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч назад`;
+        // Сегодня
+        if (date.toDateString() === now.toDateString()) {
+            return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        }
         
+        // Вчера
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (date.toDateString() === yesterday.toDateString()) {
+            return 'вчера';
+        }
+        
+        // За последнюю неделю
+        if (diff < 7 * 86400000) {
+            const days = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
+            return days[date.getDay()];
+        }
+        
+        // Более недели назад
         return date.toLocaleDateString('ru-RU', {
             day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit'
+            month: 'short'
         });
+        
     } catch {
         return 'недавно';
     }
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Инициализация при загрузке
+window.addEventListener('load', () => {
+    // Добавляем статус-точку
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+        statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
+    }
+});

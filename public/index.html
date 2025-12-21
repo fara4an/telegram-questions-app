@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анонимные вопросы</title>
+    <title>💬 Анонимные вопросы</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,9 +11,9 @@
     <div class="app-container">
         <!-- ШАПКА -->
         <div class="header">
-            <h1>❓ Анонимные вопросы</h1>
+            <h1>💬 Анонимные вопросы</h1>
             <div class="user-info" id="userInfo">
-                <div class="user-avatar" id="userAvatar">👤</div>
+                <div class="user-avatar" id="userAvatar">U</div>
                 <div class="user-details">
                     <div class="username" id="username">Загрузка...</div>
                     <div class="user-id" id="userId">ID: ...</div>
@@ -38,50 +38,61 @@
         <div class="tab-content">
             <!-- 1. ВХОДЯЩИЕ ВОПРОСЫ -->
             <div id="content-incoming" class="page active">
-                <div class="page-header" style="padding: 20px 20px 0 20px;">
-                    <h2>📥 Входящие вопросы</h2>
-                    <button class="btn btn-secondary" onclick="loadIncomingQuestions()" style="padding: 5px 10px; font-size: 12px;">
-                        🔄 Обновить
-                    </button>
-                </div>
-                <div id="incoming-list" class="questions-list">
-                    <div class="loading">Загрузка вопросов...</div>
+                <div class="questions-list" id="incoming-list">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <p>Загрузка вопросов...</p>
+                    </div>
                 </div>
             </div>
             
             <!-- 2. ОТПРАВЛЕННЫЕ ВОПРОСЫ -->
             <div id="content-sent" class="page">
-                <div class="page-header" style="padding: 20px 20px 0 20px;">
-                    <h2>📤 Отправленные вопросы</h2>
-                    <button class="btn btn-secondary" onclick="loadSentQuestions()" style="padding: 5px 10px; font-size: 12px;">
-                        🔄 Обновить
-                    </button>
-                </div>
-                <div id="sent-list" class="questions-list">
-                    <div class="loading">Загрузка отправленных вопросов...</div>
+                <div class="questions-list" id="sent-list">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <p>Загрузка отправленных вопросов...</p>
+                    </div>
                 </div>
             </div>
             
             <!-- 3. ПРОФИЛЬ -->
             <div id="content-profile" class="page">
                 <div class="profile-section">
-                    <h2>👤 Ваш профиль</h2>
                     <div class="profile-info">
+                        <h2 style="margin-bottom: 20px; color: var(--tg-text-color); display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 24px;">👤</span> Ваш профиль
+                        </h2>
                         <p><strong>Имя:</strong> <span id="profileName">...</span></p>
                         <p><strong>ID:</strong> <span id="profileId">...</span></p>
+                        <p><strong>Статус:</strong> <span style="color: var(--tg-accent-color);">Активен</span></p>
                     </div>
                     
                     <div class="share-section">
                         <h3>🔗 Ваша ссылка для вопросов</h3>
+                        <p style="color: var(--tg-secondary-text); margin-bottom: 15px; font-size: 14px;">
+                            Отправьте эту ссылку друзьям, чтобы они могли задать вам анонимные вопросы
+                        </p>
                         <div class="share-link" id="shareLinkContainer">
                             <code id="shareLink">Загрузка...</code>
-                            <button class="btn-copy" onclick="copyShareLink()">📋</button>
+                            <button class="btn-copy" onclick="copyShareLink()">
+                                <span>📋</span> Копировать
+                            </button>
                         </div>
-                        <button class="btn btn-primary" onclick="shareToTelegram()">📤 Поделиться в Telegram</button>
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-primary" onclick="shareToTelegram()" style="flex: 1;">
+                                📤 Поделиться в Telegram
+                            </button>
+                            <button class="btn btn-secondary" onclick="copyShareLink()" style="flex: 1;">
+                                📋 Скопировать ссылку
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="stats-section">
-                        <h3>📊 Статистика</h3>
+                        <h3 style="margin-bottom: 20px; color: var(--tg-text-color); display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 24px;">📊</span> Статистика
+                        </h3>
                         <div class="stats-grid">
                             <div class="stat-card">
                                 <div class="stat-number" id="statTotal">0</div>
@@ -95,6 +106,10 @@
                                 <div class="stat-number" id="statSent">0</div>
                                 <div class="stat-label">Отправлено</div>
                             </div>
+                            <div class="stat-card">
+                                <div class="stat-number" id="statAnswered">0</div>
+                                <div class="stat-label">Отвечено</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -103,7 +118,7 @@
         
         <!-- СТАТУС БАР -->
         <div class="status-bar">
-            <span id="statusText">🟢 Подключено</span>
+            <span id="statusText">🟢 Онлайн</span>
         </div>
     </div>
     
@@ -112,11 +127,19 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>✍️ Ответить на вопрос</h3>
-                <button class="btn-close" onclick="closeAnswerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+                <button class="btn-close" onclick="closeAnswerModal()">×</button>
             </div>
             <div class="modal-body">
                 <div id="questionPreview"></div>
-                <textarea id="answerText" placeholder="Введите ваш ответ..." rows="4"></textarea>
+                <textarea 
+                    id="answerText" 
+                    placeholder="Напишите ваш ответ здесь..." 
+                    rows="5"
+                    maxlength="1000"
+                ></textarea>
+                <div style="text-align: right; font-size: 13px; color: var(--tg-secondary-text);">
+                    <span id="answerCharCount">0</span>/1000 символов
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeAnswerModal()">Отмена</button>
@@ -126,5 +149,18 @@
     </div>
     
     <script src="app.js"></script>
+    <script>
+        // Счетчик символов для ответа
+        document.addEventListener('DOMContentLoaded', function() {
+            const answerText = document.getElementById('answerText');
+            const charCount = document.getElementById('answerCharCount');
+            
+            if (answerText && charCount) {
+                answerText.addEventListener('input', function() {
+                    charCount.textContent = this.value.length;
+                });
+            }
+        });
+    </script>
 </body>
 </html>
