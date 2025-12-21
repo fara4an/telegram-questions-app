@@ -6,139 +6,14 @@
     <title>✍️ Задать вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
-    <style>
-        /* Специальные стили для страницы вопроса */
-        .ask-page {
-            min-height: 100vh;
-            background: var(--tg-bg-color);
-        }
-        
-        .target-user-card {
-            background: var(--tg-secondary-bg);
-            border-radius: var(--tg-radius);
-            padding: 20px;
-            margin: 20px;
-            border: 1px solid var(--tg-border-color);
-            text-align: center;
-        }
-        
-        .target-user-card h2 {
-            color: var(--tg-text-color);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .target-user-card h2::before {
-            content: "👤";
-        }
-        
-        .target-user-id {
-            color: var(--tg-accent-color);
-            font-family: monospace;
-            font-size: 16px;
-            background: rgba(46, 141, 230, 0.1);
-            padding: 8px 16px;
-            border-radius: 20px;
-            display: inline-block;
-            margin-top: 10px;
-        }
-        
-        .form-container {
-            padding: 20px;
-        }
-        
-        .char-counter-wrapper {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 10px;
-            font-size: 13px;
-            color: var(--tg-secondary-text);
-        }
-        
-        .char-counter {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .char-counter.limit {
-            color: var(--tg-danger);
-        }
-        
-        .form-notice {
-            background: rgba(46, 141, 230, 0.1);
-            border: 1px solid rgba(46, 141, 230, 0.3);
-            border-radius: var(--tg-radius);
-            padding: 16px;
-            margin: 20px 0;
-        }
-        
-        .form-notice ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .form-notice li {
-            margin-bottom: 8px;
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 14px;
-        }
-        
-        .form-notice li::before {
-            content: "✅";
-            flex-shrink: 0;
-        }
-        
-        .result-message {
-            margin-top: 20px;
-            padding: 20px;
-            border-radius: var(--tg-radius);
-            text-align: center;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .result-success {
-            background: rgba(76, 175, 80, 0.1);
-            border: 1px solid rgba(76, 175, 80, 0.3);
-        }
-        
-        .result-error {
-            background: rgba(229, 57, 53, 0.1);
-            border: 1px solid rgba(229, 57, 53, 0.3);
-        }
-        
-        .home-button {
-            margin-top: 20px;
-            display: inline-block;
-            padding: 12px 24px;
-            background: var(--tg-accent-color);
-            color: white;
-            text-decoration: none;
-            border-radius: var(--tg-radius);
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-        
-        .home-button:hover {
-            background: var(--tg-accent-hover);
-            transform: translateY(-2px);
-        }
-    </style>
 </head>
 <body>
-    <div class="app-container ask-page">
-        <!-- ШАПКА -->
+    <div class="app-container">
+        <!-- ШАПКА - такой же стиль как в основной аппке -->
         <div class="header">
             <h1>✍️ Задать вопрос</h1>
-            <div class="user-info">
-                <div class="user-avatar" id="askerAvatar">👤</div>
+            <div class="user-info" id="userInfo">
+                <div class="user-avatar" id="askerAvatar">A</div>
                 <div class="user-details">
                     <div class="username" id="askerUsername">Аноним</div>
                     <div class="user-id">Отправитель</div>
@@ -148,17 +23,23 @@
         
         <!-- КОНТЕНТ -->
         <div class="tab-content" style="padding: 0;">
-            <div class="target-user-card">
-                <h2>Вопрос для:</h2>
-                <div id="targetUsername" style="font-size: 18px; font-weight: 600; color: var(--tg-accent-color);">
-                    Загрузка...
+            <!-- Карточка целевого пользователя -->
+            <div style="background: var(--tg-secondary-bg); padding: 20px; margin: 16px; border-radius: var(--tg-radius); border: 1px solid var(--tg-border-color);">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; margin-bottom: 10px;">👤</div>
+                    <div style="font-size: 18px; font-weight: 600; color: var(--tg-accent-color); margin-bottom: 5px;" id="targetUsername">
+                        Загрузка...
+                    </div>
+                    <div style="color: var(--tg-secondary-text); font-size: 14px;" id="targetUserId">
+                        ID: ...
+                    </div>
                 </div>
-                <div class="target-user-id" id="targetUserId">ID: ...</div>
             </div>
             
-            <div class="form-container">
-                <div class="form-group">
-                    <label for="questionText" style="display: block; margin-bottom: 12px; font-weight: 600; color: var(--tg-text-color);">
+            <!-- Форма вопроса -->
+            <div style="padding: 0 16px 20px;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 12px; font-weight: 600; color: var(--tg-text-color);">
                         Ваш вопрос:
                     </label>
                     <textarea 
@@ -168,8 +49,8 @@
                         maxlength="1000"
                         style="width: 100%; padding: 16px; border: 1px solid var(--tg-border-color); border-radius: 12px; background: var(--tg-input-bg); color: var(--tg-text-color); font-family: inherit; resize: vertical; font-size: 15px;"
                     ></textarea>
-                    <div class="char-counter-wrapper">
-                        <div class="char-counter" id="charCounter">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; color: var(--tg-secondary-text);">
+                        <div id="charCounter">
                             <span id="charCount">0</span>/1000 символов
                         </div>
                         <div id="charWarning" style="color: var(--tg-warning); display: none;">
@@ -178,15 +59,29 @@
                     </div>
                 </div>
                 
-                <div class="form-notice">
-                    <ul>
-                        <li>Ваш вопрос будет отправлен <strong>анонимно</strong></li>
-                        <li>Получатель не узнает, кто задал вопрос</li>
-                        <li>Ответ придёт получателю в приложении</li>
-                        <li>Вы не получите уведомление об ответе</li>
+                <!-- Уведомление об анонимности -->
+                <div style="background: rgba(46, 141, 230, 0.1); border: 1px solid rgba(46, 141, 230, 0.3); border-radius: var(--tg-radius); padding: 16px; margin-bottom: 20px;">
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
+                            <span style="color: var(--tg-accent-color);">✓</span>
+                            <span>Ваш вопрос будет отправлен <strong>анонимно</strong></span>
+                        </li>
+                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
+                            <span style="color: var(--tg-accent-color);">✓</span>
+                            <span>Получатель не узнает, кто задал вопрос</span>
+                        </li>
+                        <li style="margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
+                            <span style="color: var(--tg-accent-color);">✓</span>
+                            <span>Ответ придёт получателю в приложении</span>
+                        </li>
+                        <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px;">
+                            <span style="color: var(--tg-accent-color);">✓</span>
+                            <span>Вы не получите уведомление об ответе</span>
+                        </li>
                     </ul>
                 </div>
                 
+                <!-- Кнопка отправки -->
                 <button 
                     class="btn btn-primary" 
                     onclick="sendQuestion()" 
@@ -196,7 +91,8 @@
                     📤 Отправить анонимно
                 </button>
                 
-                <div id="result" class="result-message" style="display: none;"></div>
+                <!-- Результат -->
+                <div id="result" style="margin-top: 20px; padding: 20px; border-radius: var(--tg-radius); text-align: center; animation: fadeIn 0.3s ease; display: none;"></div>
             </div>
         </div>
         
@@ -221,7 +117,7 @@
                 
                 const initData = tg.initDataUnsafe;
                 currentUserId = initData.user?.id;
-                askerUsername = initData.user?.username || 'Аноним';
+                askerUsername = initData.user?.username || initData.user?.first_name || 'Аноним';
                 
                 // Обновляем информацию о спрашивающем
                 document.getElementById('askerUsername').textContent = askerUsername;
@@ -259,9 +155,9 @@
                 
                 // Обновляем цвет счетчика
                 if (length > 900) {
-                    charCounter.classList.add('limit');
+                    charCounter.style.color = 'var(--tg-danger)';
                 } else {
-                    charCounter.classList.remove('limit');
+                    charCounter.style.color = 'var(--tg-secondary-text)';
                 }
                 
                 // Показываем/скрываем предупреждение
@@ -291,6 +187,9 @@
                 if (user.username) {
                     targetUsername = user.username;
                     document.getElementById('targetUsername').textContent = `@${user.username}`;
+                } else if (user.first_name) {
+                    targetUsername = user.first_name;
+                    document.getElementById('targetUsername').textContent = user.first_name;
                 } else {
                     document.getElementById('targetUsername').textContent = 'Пользователь';
                 }
@@ -335,7 +234,7 @@
             
             // Показываем результат
             resultDiv.style.display = 'block';
-            resultDiv.className = 'result-message';
+            resultDiv.className = '';
             resultDiv.innerHTML = '<div class="loading-spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div><p style="margin-top: 10px;">Отправка вопроса...</p>';
             
             try {
@@ -355,34 +254,27 @@
                 
                 if (response.ok) {
                     // Успех
-                    resultDiv.className = 'result-message result-success';
+                    resultDiv.className = 'question-card answered';
                     resultDiv.innerHTML = `
-                        <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
-                        <h3 style="margin-bottom: 10px; color: var(--tg-success);">Вопрос отправлен!</h3>
-                        <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
-                            Ваш вопрос был отправлен анонимно.<br>
-                            Получатель получит уведомление в Telegram.
-                        </p>
-                        <a href="https://t.me/dota2servicebot" class="home-button" target="_blank">
-                            📱 Вернуться в бот
-                        </a>
+                        <div style="text-align: center; padding: 20px;">
+                            <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+                            <h3 style="margin-bottom: 10px; color: var(--tg-success);">Вопрос отправлен!</h3>
+                            <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
+                                Ваш вопрос был отправлен анонимно.<br>
+                                Получатель получит уведомление в Telegram.
+                            </p>
+                            <button onclick="closeWebApp()" class="btn btn-primary" style="margin-top: 10px;">
+                                📱 Закрыть
+                            </button>
+                        </div>
                     `;
                     
                     // Очищаем поле
                     questionText.value = '';
                     document.getElementById('charCount').textContent = '0';
-                    document.getElementById('charCounter').classList.remove('limit');
+                    document.getElementById('charCounter').style.color = 'var(--tg-secondary-text)';
                     
                     updateStatus('✅ Отправлено');
-                    
-                    // Закрываем окно через 5 секунд
-                    setTimeout(() => {
-                        if (tg) {
-                            tg.close();
-                        } else if (window.opener) {
-                            window.close();
-                        }
-                    }, 5000);
                     
                 } else {
                     throw new Error(data.error || 'Неизвестная ошибка');
@@ -392,17 +284,19 @@
                 console.error('Ошибка отправки:', error);
                 
                 // Ошибка
-                resultDiv.className = 'result-message result-error';
+                resultDiv.className = 'question-card sent';
                 resultDiv.innerHTML = `
-                    <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
-                    <h3 style="margin-bottom: 10px; color: var(--tg-danger);">Ошибка отправки</h3>
-                    <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
-                        ${error.message}<br>
-                        Проверьте подключение к интернету и попробуйте снова.
-                    </p>
-                    <button onclick="sendQuestion()" class="home-button" style="background: var(--tg-accent-color); border: none;">
-                        🔄 Попробовать снова
-                    </button>
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
+                        <h3 style="margin-bottom: 10px; color: var(--tg-danger);">Ошибка отправки</h3>
+                        <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
+                            ${error.message}<br>
+                            Проверьте подключение к интернету и попробуйте снова.
+                        </p>
+                        <button onclick="sendQuestion()" class="btn btn-primary" style="margin-top: 10px;">
+                            🔄 Попробовать снова
+                        </button>
+                    </div>
                 `;
                 
                 updateStatus('🔴 Ошибка');
@@ -414,15 +308,25 @@
             }
         }
         
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            } else {
+                window.history.back();
+            }
+        }
+        
         function showError(message) {
             updateStatus('⚠️ Ошибка');
             
             const resultDiv = document.getElementById('result');
             resultDiv.style.display = 'block';
-            resultDiv.className = 'result-message result-error';
+            resultDiv.className = 'question-card sent';
             resultDiv.innerHTML = `
-                <div style="font-size: 24px; margin-bottom: 10px;">❌</div>
-                <p>${message}</p>
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 24px; margin-bottom: 10px;">❌</div>
+                    <p>${message}</p>
+                </div>
             `;
             
             setTimeout(() => {

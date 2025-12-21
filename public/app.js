@@ -1,4 +1,4 @@
-// Telegram Web App
+// app.js - Web App
 let tg = window.Telegram?.WebApp;
 let userId = null;
 let username = null;
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         const initData = tg.initDataUnsafe;
         userId = initData.user?.id;
-        username = initData.user?.username || `user_${userId}`;
+        username = initData.user?.username || initData.user?.first_name || `user_${userId}`;
         
         console.log('Пользователь:', userId, username);
     } else {
@@ -63,24 +63,20 @@ async function loadAllData() {
     try {
         updateStatus('🔄 Загрузка...');
         
-        // Пробуем загрузить с сервера
-        try {
-            await Promise.all([
-                loadIncomingQuestions(),
-                loadSentQuestions(),
-                updateStats()
-            ]);
-            updateStatus('🟢 Онлайн');
-        } catch (error) {
-            console.log('Сервер не отвечает, используем тестовые данные');
-            await loadTestData();
-            updateStatus('🟡 Демо-режим');
-            showNotification('Используем тестовые данные', 'warning');
-        }
+        // Загружаем все параллельно
+        await Promise.all([
+            loadIncomingQuestions(),
+            loadSentQuestions(),
+            loadStats()
+        ]);
+        
+        updateStatus('🟢 Онлайн');
         
     } catch (error) {
-        console.error('Критическая ошибка загрузки:', error);
-        updateStatus('🔴 Ошибка');
+        console.log('Сервер не отвечает, используем тестовые данные:', error);
+        await loadTestData();
+        updateStatus('🟡 Демо-режим');
+        showNotification('Используем тестовые данные', 'warning');
     }
 }
 
@@ -177,30 +173,38 @@ async function loadSentQuestions() {
     }
 }
 
-// Обновить статистику
-async function updateStats() {
+// Загрузить статистику
+async function loadStats() {
     try {
-        const [incomingRes, sentRes, answeredRes] = await Promise.all([
-            fetch(`/api/questions/incoming/${userId}`),
-            fetch(`/api/questions/sent/${userId}`),
-            fetch(`/api/questions/answered/${userId}`)
-        ]);
+        const response = await fetch(`/api/stats/${userId}`);
         
-        const incoming = await incomingRes.json();
-        const sent = await sentRes.json();
-        const answered = await answeredRes.json();
+        if (!response.ok) {
+            throw new Error('Ошибка сервера');
+        }
+        
+        const stats = await response.json();
+        
+        document.getElementById('statTotal').textContent = stats.total || 0;
+        document.getElementById('statReceived').textContent = stats.received || 0;
+        document.getElementById('statSent').textContent = stats.sent || 0;
+        document.getElementById('statAnswered').textContent = stats.answered || 0;
+        
+    } catch (error) {
+        console.error('Ошибка загрузки статистики:', error);
+        // Используем локальный расчет
+        const incomingResponse = await fetch(`/api/questions/incoming/${userId}`);
+        const sentResponse = await fetch(`/api/questions/sent/${userId}`);
+        
+        const incoming = incomingResponse.ok ? await incomingResponse.json() : [];
+        const sent = sentResponse.ok ? await sentResponse.json() : [];
         
         const totalQuestions = incoming.length + sent.length;
-        const answeredCount = answered.length;
+        const answeredCount = [...incoming, ...sent].filter(q => q.is_answered).length;
         
         document.getElementById('statTotal').textContent = totalQuestions;
         document.getElementById('statReceived').textContent = incoming.length;
         document.getElementById('statSent').textContent = sent.length;
         document.getElementById('statAnswered').textContent = answeredCount;
-        
-    } catch (error) {
-        console.error('Ошибка статистики:', error);
-        throw error;
     }
 }
 
@@ -464,10 +468,8 @@ async function generateAndShare(type) {
     }
     
     try {
-        // Показываем уведомление о генерации
         showNotification('🖼️ Генерируем картинку...', 'info', 0);
         
-        // Получаем информацию о вопросе для текста
         let questionText = "Интересный вопрос";
         try {
             const questionResponse = await fetch(`/api/question/${currentQuestionId}`);
@@ -479,17 +481,12 @@ async function generateAndShare(type) {
             console.log('Не удалось получить информацию о вопросе:', error);
         }
         
-        // Получаем ссылку для приглашения
         const inviteLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
-        
-        // Текст для шеринга
         const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${questionText}"\n\n👇 Задай и мне анонимный вопрос!`;
         const fullText = `${shareText}\n\n${inviteLink}`;
         
-        // Закрываем модалку выбора
         closeShareModal();
         
-        // Генерируем картинку
         let imageUrl;
         try {
             const response = await fetch(`/api/generate-image/${currentQuestionId}`);
@@ -506,10 +503,8 @@ async function generateAndShare(type) {
         
         shareImageUrl = imageUrl;
         
-        // В зависимости от типа шеринга
         if (tg) {
             if (type === 'story') {
-                // Пробуем поделиться в историю
                 try {
                     if (tg.sharePhoto) {
                         tg.sharePhoto(imageUrl, fullText);
@@ -522,7 +517,6 @@ async function generateAndShare(type) {
                     downloadAndShare(imageUrl, fullText);
                 }
             } else if (type === 'chats') {
-                // Пробуем поделиться в чаты
                 try {
                     if (tg.openTelegramLink) {
                         const encodedText = encodeURIComponent(fullText);
@@ -538,7 +532,6 @@ async function generateAndShare(type) {
                 }
             }
         } else {
-            // В браузере - просто скачиваем
             downloadAndShare(imageUrl, fullText);
         }
         
@@ -554,16 +547,13 @@ async function generateAndShare(type) {
 }
 
 function downloadAndShare(imageUrl, text) {
-    // Скачиваем изображение
     const downloadLink = document.createElement('a');
     downloadLink.href = imageUrl;
     downloadLink.download = `question-answer-${currentQuestionId}.png`;
     downloadLink.click();
     
-    // Показываем текст для копирования
     showNotification(`✅ Картинка скачана!\n\nСкопируйте текст:\n${text}`, 'success', 5000);
     
-    // Даем возможность скопировать текст
     setTimeout(() => {
         if (confirm('Скопировать текст для поста?')) {
             navigator.clipboard.writeText(text).then(() => {
@@ -583,7 +573,6 @@ async function shareProfileToTelegram() {
         const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodedText}`;
         tg.openTelegramLink(shareUrl);
     } else {
-        // В браузере
         const fullUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
         window.open(fullUrl, '_blank', 'noopener,noreferrer');
     }
@@ -612,7 +601,6 @@ async function deleteQuestion(questionId) {
 
 // ========== УВЕДОМЛЕНИЯ ==========
 function showNotification(message, type = 'info', duration = 3000, id = null) {
-    // Удаляем старые уведомления
     const oldNotifications = document.querySelectorAll('.notification');
     oldNotifications.forEach(n => {
         if (n.getAttribute('data-id') !== id) {
@@ -631,7 +619,6 @@ function showNotification(message, type = 'info', duration = 3000, id = null) {
         info: '💡'
     };
     
-    // Разбиваем сообщение на строки
     const messageLines = message.split('\n').map(line => 
         `<div style="margin: 2px 0;">${line}</div>`
     ).join('');
@@ -660,14 +647,12 @@ function setupTabs() {
         tab.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
             
-            // Обновляем активные вкладки
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             
             this.classList.add('active');
             document.getElementById(`content-${tabId}`).classList.add('active');
             
-            // Прокручиваем к началу
             document.querySelector('.tab-content').scrollTop = 0;
         });
     });
@@ -690,14 +675,13 @@ function updateStatus(status) {
     if (statusElement) {
         statusElement.textContent = status;
         
-        // Обновляем цвет точки
         const statusDot = statusElement.querySelector('.status-dot');
         if (statusDot) {
-            if (status.includes('🟢')) {
+            if (status.includes('🟢') || status.includes('✅')) {
                 statusDot.className = 'status-dot';
-            } else if (status.includes('🔴')) {
+            } else if (status.includes('🔴') || status.includes('❌')) {
                 statusDot.className = 'status-dot error';
-            } else if (status.includes('🟡')) {
+            } else if (status.includes('🟡') || status.includes('⚠️')) {
                 statusDot.className = 'status-dot loading';
             } else {
                 statusDot.className = 'status-dot loading';
@@ -712,25 +696,21 @@ function formatDate(dateString) {
         const now = new Date();
         const diff = now - date;
         
-        // Сегодня
         if (date.toDateString() === now.toDateString()) {
             return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         }
         
-        // Вчера
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         if (date.toDateString() === yesterday.toDateString()) {
             return 'вчера';
         }
         
-        // За последнюю неделю
         if (diff < 7 * 86400000) {
             const days = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
             return days[date.getDay()];
         }
         
-        // Более недели назад
         return date.toLocaleDateString('ru-RU', {
             day: 'numeric',
             month: 'short'
@@ -757,7 +737,6 @@ window.addEventListener('beforeunload', () => {
 
 // Инициализация при загрузке
 window.addEventListener('load', () => {
-    // Добавляем статус-точку
     const statusText = document.getElementById('statusText');
     if (statusText) {
         statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
