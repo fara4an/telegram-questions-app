@@ -3,67 +3,206 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Задать анонимный вопрос</title>
+    <title>✍️ Задать вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        /* Специальные стили для страницы вопроса */
+        .ask-page {
             min-height: 100vh;
+            background: var(--tg-bg-color);
+        }
+        
+        .target-user-card {
+            background: var(--tg-secondary-bg);
+            border-radius: var(--tg-radius);
+            padding: 20px;
+            margin: 20px;
+            border: 1px solid var(--tg-border-color);
+            text-align: center;
+        }
+        
+        .target-user-card h2 {
+            color: var(--tg-text-color);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .target-user-card h2::before {
+            content: "👤";
+        }
+        
+        .target-user-id {
+            color: var(--tg-accent-color);
+            font-family: monospace;
+            font-size: 16px;
+            background: rgba(46, 141, 230, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+        
+        .form-container {
             padding: 20px;
         }
         
-        .target-info {
-            background: #f0f9ff;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #0088cc;
+        .char-counter-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--tg-secondary-text);
+        }
+        
+        .char-counter {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .char-counter.limit {
+            color: var(--tg-danger);
+        }
+        
+        .form-notice {
+            background: rgba(46, 141, 230, 0.1);
+            border: 1px solid rgba(46, 141, 230, 0.3);
+            border-radius: var(--tg-radius);
+            padding: 16px;
+            margin: 20px 0;
+        }
+        
+        .form-notice ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .form-notice li {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .form-notice li::before {
+            content: "✅";
+            flex-shrink: 0;
+        }
+        
+        .result-message {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: var(--tg-radius);
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .result-success {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .result-error {
+            background: rgba(229, 57, 53, 0.1);
+            border: 1px solid rgba(229, 57, 53, 0.3);
+        }
+        
+        .home-button {
+            margin-top: 20px;
+            display: inline-block;
+            padding: 12px 24px;
+            background: var(--tg-accent-color);
+            color: white;
+            text-decoration: none;
+            border-radius: var(--tg-radius);
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .home-button:hover {
+            background: var(--tg-accent-hover);
+            transform: translateY(-2px);
         }
     </style>
 </head>
 <body>
-    <div class="app-container" style="max-width: 500px; margin: 0 auto;">
+    <div class="app-container ask-page">
+        <!-- ШАПКА -->
         <div class="header">
             <h1>✍️ Задать вопрос</h1>
-        </div>
-        
-        <div class="tab-content" style="padding: 20px;">
-            <div id="ask-form">
-                <div class="question-form">
-                    <div class="target-info" id="targetInfo">
-                        <p style="margin: 0; font-weight: bold;">Загрузка информации...</p>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="questionText">Ваш вопрос:</label>
-                        <textarea 
-                            id="questionText" 
-                            placeholder="Введите ваш вопрос здесь... Будьте вежливы!"
-                            rows="6"
-                            maxlength="1000"
-                            style="width: 100%; padding: 15px; border: 2px solid #dee2e6; border-radius: 10px; font-family: inherit; resize: vertical;"
-                        ></textarea>
-                        <div class="char-counter">
-                            <span id="charCount">0</span>/1000 символов
-                        </div>
-                    </div>
-                    
-                    <div class="form-notice">
-                        <p>✅ Ваш вопрос будет отправлен <strong>анонимно</strong></p>
-                        <p>✅ Вы не получите уведомление об ответе</p>
-                        <p>✅ Получатель увидит ответ в своём приложении</p>
-                    </div>
-                    
-                    <button class="btn btn-primary" onclick="sendQuestion()" style="width: 100%; padding: 15px;">
-                        📤 Отправить анонимно
-                    </button>
-                    
-                    <div id="result" style="margin-top: 20px;"></div>
+            <div class="user-info">
+                <div class="user-avatar" id="askerAvatar">👤</div>
+                <div class="user-details">
+                    <div class="username" id="askerUsername">Аноним</div>
+                    <div class="user-id">Отправитель</div>
                 </div>
             </div>
+        </div>
+        
+        <!-- КОНТЕНТ -->
+        <div class="tab-content" style="padding: 0;">
+            <div class="target-user-card">
+                <h2>Вопрос для:</h2>
+                <div id="targetUsername" style="font-size: 18px; font-weight: 600; color: var(--tg-accent-color);">
+                    Загрузка...
+                </div>
+                <div class="target-user-id" id="targetUserId">ID: ...</div>
+            </div>
+            
+            <div class="form-container">
+                <div class="form-group">
+                    <label for="questionText" style="display: block; margin-bottom: 12px; font-weight: 600; color: var(--tg-text-color);">
+                        Ваш вопрос:
+                    </label>
+                    <textarea 
+                        id="questionText" 
+                        placeholder="Напишите ваш вопрос здесь... Будьте вежливы и уважительны!"
+                        rows="6"
+                        maxlength="1000"
+                        style="width: 100%; padding: 16px; border: 1px solid var(--tg-border-color); border-radius: 12px; background: var(--tg-input-bg); color: var(--tg-text-color); font-family: inherit; resize: vertical; font-size: 15px;"
+                    ></textarea>
+                    <div class="char-counter-wrapper">
+                        <div class="char-counter" id="charCounter">
+                            <span id="charCount">0</span>/1000 символов
+                        </div>
+                        <div id="charWarning" style="color: var(--tg-warning); display: none;">
+                            ⚠️ Минимум 5 символов
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-notice">
+                    <ul>
+                        <li>Ваш вопрос будет отправлен <strong>анонимно</strong></li>
+                        <li>Получатель не узнает, кто задал вопрос</li>
+                        <li>Ответ придёт получателю в приложении</li>
+                        <li>Вы не получите уведомление об ответе</li>
+                    </ul>
+                </div>
+                
+                <button 
+                    class="btn btn-primary" 
+                    onclick="sendQuestion()" 
+                    style="width: 100%; padding: 16px; font-size: 16px; font-weight: 600;"
+                    id="sendButton"
+                >
+                    📤 Отправить анонимно
+                </button>
+                
+                <div id="result" class="result-message" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- СТАТУС БАР -->
+        <div class="status-bar">
+            <span id="statusText">🟢 Готово к отправке</span>
         </div>
     </div>
     
@@ -72,6 +211,7 @@
         let currentUserId = null;
         let targetUserId = null;
         let targetUsername = null;
+        let askerUsername = null;
         
         // Инициализация
         document.addEventListener('DOMContentLoaded', function() {
@@ -81,11 +221,20 @@
                 
                 const initData = tg.initDataUnsafe;
                 currentUserId = initData.user?.id;
+                askerUsername = initData.user?.username || 'Аноним';
                 
-                console.log('Текущий пользователь:', currentUserId);
+                // Обновляем информацию о спрашивающем
+                document.getElementById('askerUsername').textContent = askerUsername;
+                const askerAvatar = document.getElementById('askerAvatar');
+                if (askerAvatar) {
+                    const firstLetter = askerUsername.charAt(0).toUpperCase();
+                    askerAvatar.textContent = firstLetter;
+                }
             } else {
                 // Демо-режим
                 currentUserId = '999999';
+                askerUsername = 'Аноним';
+                document.getElementById('askerUsername').textContent = 'Аноним';
             }
             
             // Получаем ID целевого пользователя из URL
@@ -93,17 +242,44 @@
             targetUserId = pathParts[pathParts.length - 1];
             
             console.log('Целевой пользователь:', targetUserId);
+            console.log('Отправитель:', currentUserId, askerUsername);
             
             // Загружаем информацию о целевом пользователе
             loadTargetUserInfo();
             
             // Счётчик символов
-            document.getElementById('questionText').addEventListener('input', function() {
-                document.getElementById('charCount').textContent = this.value.length;
+            const questionText = document.getElementById('questionText');
+            const charCount = document.getElementById('charCount');
+            const charCounter = document.getElementById('charCounter');
+            const charWarning = document.getElementById('charWarning');
+            
+            questionText.addEventListener('input', function() {
+                const length = this.value.length;
+                charCount.textContent = length;
+                
+                // Обновляем цвет счетчика
+                if (length > 900) {
+                    charCounter.classList.add('limit');
+                } else {
+                    charCounter.classList.remove('limit');
+                }
+                
+                // Показываем/скрываем предупреждение
+                if (length > 0 && length < 5) {
+                    charWarning.style.display = 'block';
+                } else {
+                    charWarning.style.display = 'none';
+                }
             });
             
             // Автофокус на поле ввода
-            document.getElementById('questionText').focus();
+            questionText.focus();
+            
+            // Добавляем статус-точку
+            const statusText = document.getElementById('statusText');
+            if (statusText) {
+                statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
+            }
         });
         
         // Загрузить информацию о пользователе, которому задаем вопрос
@@ -114,48 +290,53 @@
                 
                 if (user.username) {
                     targetUsername = user.username;
-                    document.getElementById('targetInfo').innerHTML = `
-                        <p style="margin: 0; font-weight: bold;">Вопрос для: @${user.username}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
-                    `;
+                    document.getElementById('targetUsername').textContent = `@${user.username}`;
                 } else {
-                    document.getElementById('targetInfo').innerHTML = `
-                        <p style="margin: 0; font-weight: bold;">Вопрос для пользователя</p>
-                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
-                    `;
+                    document.getElementById('targetUsername').textContent = 'Пользователь';
                 }
+                
+                document.getElementById('targetUserId').textContent = `ID: ${targetUserId}`;
+                
             } catch (error) {
                 console.error('Ошибка загрузки информации:', error);
-                document.getElementById('targetInfo').innerHTML = `
-                    <p style="margin: 0; font-weight: bold;">Вопрос для пользователя</p>
-                    <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
-                `;
+                document.getElementById('targetUsername').textContent = 'Пользователь';
+                document.getElementById('targetUserId').textContent = `ID: ${targetUserId}`;
             }
         }
         
         // Отправка вопроса
         async function sendQuestion() {
-            const questionText = document.getElementById('questionText').value.trim();
+            const questionText = document.getElementById('questionText');
+            const sendButton = document.getElementById('sendButton');
             const resultDiv = document.getElementById('result');
             
+            const question = questionText.value.trim();
+            
             // Валидация
-            if (!questionText) {
+            if (!question) {
                 showError('Введите текст вопроса');
                 return;
             }
             
-            if (questionText.length < 3) {
-                showError('Вопрос слишком короткий (минимум 3 символа)');
+            if (question.length < 5) {
+                showError('Вопрос слишком короткий (минимум 5 символов)');
                 return;
             }
             
-            if (questionText.length > 1000) {
+            if (question.length > 1000) {
                 showError('Вопрос слишком длинный (максимум 1000 символов)');
                 return;
             }
             
-            // Показываем загрузку
-            resultDiv.innerHTML = '<div class="loading">Отправка вопроса...</div>';
+            // Блокируем кнопку и показываем загрузку
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<div class="loading-spinner" style="width: 20px; height: 20px; border-width: 2px; margin: 0 auto;"></div>';
+            updateStatus('🔄 Отправка...');
+            
+            // Показываем результат
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result-message';
+            resultDiv.innerHTML = '<div class="loading-spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div><p style="margin-top: 10px;">Отправка вопроса...</p>';
             
             try {
                 const response = await fetch('/api/questions', {
@@ -164,65 +345,138 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        from_user_id: currentUserId || null, // null = анонимно
+                        from_user_id: currentUserId || null,
                         to_user_id: targetUserId,
-                        text: questionText
+                        text: question
                     })
                 });
                 
                 const data = await response.json();
                 
                 if (response.ok) {
+                    // Успех
+                    resultDiv.className = 'result-message result-success';
                     resultDiv.innerHTML = `
-                        <div class="answer-bubble" style="background: #d4edda; border-color: #28a745;">
-                            <strong>✅ Вопрос отправлен!</strong><br>
-                            <small>Ваш вопрос был отправлен анонимно. Получатель получит уведомление в Telegram.</small>
-                        </div>
+                        <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+                        <h3 style="margin-bottom: 10px; color: var(--tg-success);">Вопрос отправлен!</h3>
+                        <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
+                            Ваш вопрос был отправлен анонимно.<br>
+                            Получатель получит уведомление в Telegram.
+                        </p>
+                        <a href="https://t.me/dota2servicebot" class="home-button" target="_blank">
+                            📱 Вернуться в бот
+                        </a>
                     `;
                     
                     // Очищаем поле
-                    document.getElementById('questionText').value = '';
+                    questionText.value = '';
                     document.getElementById('charCount').textContent = '0';
+                    document.getElementById('charCounter').classList.remove('limit');
                     
-                    // Закрываем окно через 3 секунды
+                    updateStatus('✅ Отправлено');
+                    
+                    // Закрываем окно через 5 секунд
                     setTimeout(() => {
-                        if (window.opener) {
-                            window.close();
-                        } else if (tg) {
+                        if (tg) {
                             tg.close();
-                        } else {
-                            window.history.back();
+                        } else if (window.opener) {
+                            window.close();
                         }
-                    }, 3000);
+                    }, 5000);
                     
                 } else {
                     throw new Error(data.error || 'Неизвестная ошибка');
                 }
                 
             } catch (error) {
-                console.error('Ошибка:', error);
+                console.error('Ошибка отправки:', error);
+                
+                // Ошибка
+                resultDiv.className = 'result-message result-error';
                 resultDiv.innerHTML = `
-                    <div class="answer-bubble" style="background: #f8d7da; border-color: #dc3545;">
-                        <strong>❌ Ошибка отправки</strong><br>
-                        <small>${error.message}</small><br>
-                        <button class="btn btn-secondary" onclick="sendQuestion()" style="margin-top: 10px;">
-                            🔄 Попробовать снова
-                        </button>
-                    </div>
+                    <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
+                    <h3 style="margin-bottom: 10px; color: var(--tg-danger);">Ошибка отправки</h3>
+                    <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
+                        ${error.message}<br>
+                        Проверьте подключение к интернету и попробуйте снова.
+                    </p>
+                    <button onclick="sendQuestion()" class="home-button" style="background: var(--tg-accent-color); border: none;">
+                        🔄 Попробовать снова
+                    </button>
                 `;
+                
+                updateStatus('🔴 Ошибка');
+                
+            } finally {
+                // Разблокируем кнопку
+                sendButton.disabled = false;
+                sendButton.innerHTML = '📤 Отправить анонимно';
             }
         }
         
         function showError(message) {
+            updateStatus('⚠️ Ошибка');
+            
             const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result-message result-error';
             resultDiv.innerHTML = `
-                <div class="answer-bubble" style="background: #f8d7da; border-color: #dc3545;">
-                    ❌ ${message}
-                </div>
+                <div style="font-size: 24px; margin-bottom: 10px;">❌</div>
+                <p>${message}</p>
             `;
             
             setTimeout(() => {
-                resultDiv.innerHTML = '';
+                resultDiv.style.display = 'none';
+                updateStatus('🟢 Готово к отправке');
+            }, 3000);
+        }
+        
+        function updateStatus(status) {
+            const statusElement = document.getElementById('statusText');
+            if (statusElement) {
+                const statusText = statusElement.textContent.replace(/^[^\s]+\s/, '');
+                statusElement.textContent = status;
+                
+                // Обновляем цвет точки
+                const statusDot = statusElement.querySelector('.status-dot');
+                if (statusDot) {
+                    if (status.includes('🟢') || status.includes('✅')) {
+                        statusDot.className = 'status-dot';
+                    } else if (status.includes('🔴') || status.includes('❌')) {
+                        statusDot.className = 'status-dot error';
+                    } else if (status.includes('⚠️')) {
+                        statusDot.className = 'status-dot loading';
+                    } else {
+                        statusDot.className = 'status-dot loading';
+                    }
+                }
+            }
+        }
+        
+        // Показываем уведомление
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: '💡'
+            };
+            
+            notification.innerHTML = `
+                <div class="notification-icon">${icons[type] || '💡'}</div>
+                <div>${message}</div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
             }, 3000);
         }
     </script>

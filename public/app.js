@@ -4,7 +4,6 @@ let userId = null;
 let username = null;
 let currentQuestionId = null;
 let shareImageUrl = null;
-let isDemoMode = false;
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', async function() {
@@ -19,20 +18,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         username = initData.user?.username || `user_${userId}`;
         
         console.log('Пользователь:', userId, username);
-        
-        // Проверяем, доступен ли бот
-        if (!userId) {
-            showNotification('⚠️ Включаем демо-режим', 'warning');
-            isDemoMode = true;
-            userId = 'demo_' + Math.floor(Math.random() * 10000);
-            username = 'Демо пользователь';
-        }
     } else {
         // Демо-режим
-        isDemoMode = true;
-        userId = 'demo_' + Math.floor(Math.random() * 10000);
+        userId = '123456';
         username = 'Демо пользователь';
-        console.log('Демо-режим для браузера');
     }
     
     // Инициализация UI
@@ -67,12 +56,6 @@ function initUI() {
     
     // Настраиваем вкладки
     setupTabs();
-    
-    // Показываем демо-режим если включен
-    if (isDemoMode) {
-        updateStatus('🟡 Демо-режим');
-        document.getElementById('userInfo').style.borderColor = 'var(--tg-warning)';
-    }
 }
 
 // ========== ЗАГРУЗКА ДАННЫХ ==========
@@ -80,38 +63,24 @@ async function loadAllData() {
     try {
         updateStatus('🔄 Загрузка...');
         
-        // Используем Promise.allSettled чтобы не прерывать загрузку при ошибке одного из запросов
-        const results = await Promise.allSettled([
-            loadIncomingQuestions(),
-            loadSentQuestions(),
-            updateStats()
-        ]);
-        
-        // Проверяем, есть ли успешные загрузки
-        const hasSuccess = results.some(result => result.status === 'fulfilled');
-        
-        if (hasSuccess) {
+        // Пробуем загрузить с сервера
+        try {
+            await Promise.all([
+                loadIncomingQuestions(),
+                loadSentQuestions(),
+                updateStats()
+            ]);
             updateStatus('🟢 Онлайн');
-        } else {
-            updateStatus('🔴 Ошибка загрузки');
-            // Показываем тестовые данные
-            if (!isDemoMode) {
-                showNotification('Используем тестовые данные', 'warning');
-                isDemoMode = true;
-                await loadTestData();
-            }
+        } catch (error) {
+            console.log('Сервер не отвечает, используем тестовые данные');
+            await loadTestData();
+            updateStatus('🟡 Демо-режим');
+            showNotification('Используем тестовые данные', 'warning');
         }
         
     } catch (error) {
-        console.error('Ошибка загрузки:', error);
+        console.error('Критическая ошибка загрузки:', error);
         updateStatus('🔴 Ошибка');
-        
-        // Переключаемся в демо-режим
-        if (!isDemoMode) {
-            showNotification('Сервер не отвечает. Включаем демо-режим.', 'warning');
-            isDemoMode = true;
-            await loadTestData();
-        }
     }
 }
 
@@ -136,36 +105,19 @@ async function loadTestData() {
                 created_at: new Date(Date.now() - 86400000).toISOString(),
                 answered_at: new Date(Date.now() - 43200000).toISOString(),
                 from_username: 'Аноним'
-            },
-            {
-                id: 3,
-                text: "Советуешь ли новичкам играть в Dota?",
-                answer: null,
-                is_answered: false,
-                created_at: new Date(Date.now() - 172800000).toISOString(),
-                from_username: 'Аноним'
             }
         ];
         
         // Тестовые отправленные вопросы
         const testSentQuestions = [
             {
-                id: 4,
+                id: 3,
                 text: "Как дела?",
                 answer: "Всё отлично, спасибо!",
                 is_answered: true,
                 created_at: new Date(Date.now() - 345600000).toISOString(),
                 to_user_id: 987654,
                 to_username: 'friend_user'
-            },
-            {
-                id: 5,
-                text: "Что думаешь об обновлении 7.36?",
-                answer: null,
-                is_answered: false,
-                created_at: new Date(Date.now() - 86400000).toISOString(),
-                to_user_id: 555555,
-                to_username: 'dota_player'
             }
         ];
         
@@ -186,54 +138,39 @@ async function loadTestData() {
         
     } catch (error) {
         console.error('Ошибка загрузки тестовых данных:', error);
-        showNotification('Не удалось загрузить данные', 'error');
     }
 }
 
 // Загрузить входящие вопросы
 async function loadIncomingQuestions() {
-    if (isDemoMode) {
-        return; // Используем тестовые данные
-    }
-    
     try {
-        const response = await fetch(`/api/questions/incoming/${userId}`, {
-            timeout: 10000 // 10 секунд таймаут
-        });
+        const response = await fetch(`/api/questions/incoming/${userId}`);
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error('Ошибка сервера');
         }
         
         const questions = await response.json();
         renderIncomingQuestions(questions);
         updateBadge('incoming', questions.length);
-        
     } catch (error) {
         console.error('Ошибка загрузки входящих:', error);
-        throw error; // Пробрасываем ошибку для обработки в loadAllData
+        throw error;
     }
 }
 
 // Загрузить отправленные вопросы
 async function loadSentQuestions() {
-    if (isDemoMode) {
-        return; // Используем тестовые данные
-    }
-    
     try {
-        const response = await fetch(`/api/questions/sent/${userId}`, {
-            timeout: 10000
-        });
+        const response = await fetch(`/api/questions/sent/${userId}`);
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error('Ошибка сервера');
         }
         
         const questions = await response.json();
         renderSentQuestions(questions);
         updateBadge('sent', questions.length);
-        
     } catch (error) {
         console.error('Ошибка загрузки отправленных:', error);
         throw error;
@@ -242,15 +179,11 @@ async function loadSentQuestions() {
 
 // Обновить статистику
 async function updateStats() {
-    if (isDemoMode) {
-        return; // Используем тестовые данные
-    }
-    
     try {
         const [incomingRes, sentRes, answeredRes] = await Promise.all([
-            fetch(`/api/questions/incoming/${userId}`, { timeout: 10000 }),
-            fetch(`/api/questions/sent/${userId}`, { timeout: 10000 }),
-            fetch(`/api/questions/answered/${userId}`, { timeout: 10000 })
+            fetch(`/api/questions/incoming/${userId}`),
+            fetch(`/api/questions/sent/${userId}`),
+            fetch(`/api/questions/answered/${userId}`)
         ]);
         
         const incoming = await incomingRes.json();
@@ -385,11 +318,6 @@ function renderSentQuestions(questions) {
 function openAnswerModal(questionId) {
     currentQuestionId = questionId;
     
-    if (isDemoMode) {
-        showNotification('В демо-режиме ответы не сохраняются', 'warning');
-        return;
-    }
-    
     // Находим вопрос
     const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
     if (!questionCard) {
@@ -421,12 +349,6 @@ function closeAnswerModal() {
 }
 
 async function submitAnswer() {
-    if (isDemoMode) {
-        showNotification('В демо-режиме ответы не сохраняются', 'warning');
-        closeAnswerModal();
-        return;
-    }
-    
     const answerText = document.getElementById('answerText').value.trim();
     
     if (!answerText) {
@@ -547,16 +469,14 @@ async function generateAndShare(type) {
         
         // Получаем информацию о вопросе для текста
         let questionText = "Интересный вопрос";
-        if (!isDemoMode) {
-            try {
-                const questionResponse = await fetch(`/api/question/${currentQuestionId}`);
-                if (questionResponse.ok) {
-                    const question = await questionResponse.json();
-                    questionText = question.text.substring(0, 100) + (question.text.length > 100 ? '...' : '');
-                }
-            } catch (error) {
-                console.log('Не удалось получить информацию о вопросе:', error);
+        try {
+            const questionResponse = await fetch(`/api/question/${currentQuestionId}`);
+            if (questionResponse.ok) {
+                const question = await questionResponse.json();
+                questionText = question.text.substring(0, 100) + (question.text.length > 100 ? '...' : '');
             }
+        } catch (error) {
+            console.log('Не удалось получить информацию о вопросе:', error);
         }
         
         // Получаем ссылку для приглашения
@@ -571,22 +491,17 @@ async function generateAndShare(type) {
         
         // Генерируем картинку
         let imageUrl;
-        if (!isDemoMode) {
-            try {
-                const response = await fetch(`/api/generate-image/${currentQuestionId}`);
-                if (response.ok) {
-                    const blob = await response.blob();
-                    imageUrl = URL.createObjectURL(blob);
-                } else {
-                    throw new Error('Ошибка генерации');
-                }
-            } catch (error) {
-                console.log('Используем тестовую картинку:', error);
-                imageUrl = 'https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Ответ+на+вопрос';
+        try {
+            const response = await fetch(`/api/generate-image/${currentQuestionId}`);
+            if (response.ok) {
+                const blob = await response.blob();
+                imageUrl = URL.createObjectURL(blob);
+            } else {
+                throw new Error('Ошибка генерации');
             }
-        } else {
-            // В демо-режиме используем тестовую картинку
-            imageUrl = 'https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Демо+режим';
+        } catch (error) {
+            console.log('Используем тестовую картинку:', error);
+            imageUrl = 'https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Ответ+на+вопрос';
         }
         
         shareImageUrl = imageUrl;
@@ -676,11 +591,6 @@ async function shareProfileToTelegram() {
 
 // ========== УДАЛЕНИЕ ВОПРОСА ==========
 async function deleteQuestion(questionId) {
-    if (isDemoMode) {
-        showNotification('В демо-режиме удаление не работает', 'warning');
-        return;
-    }
-    
     if (!confirm('Удалить этот вопрос?')) return;
     
     try {
@@ -853,31 +763,3 @@ window.addEventListener('load', () => {
         statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
     }
 });
-
-// Добавляем timeout для fetch
-if (!window.fetch) {
-    console.error('Fetch API не поддерживается');
-} else {
-    const originalFetch = window.fetch;
-    window.fetch = function(resource, options = {}) {
-        const timeout = options.timeout || 10000;
-        
-        const controller = new AbortController();
-        const { signal } = controller;
-        options.signal = signal;
-        
-        const timeoutId = setTimeout(() => {
-            controller.abort();
-        }, timeout);
-        
-        return originalFetch(resource, options)
-            .then(response => {
-                clearTimeout(timeoutId);
-                return response;
-            })
-            .catch(error => {
-                clearTimeout(timeoutId);
-                throw error;
-            });
-    };
-}

@@ -610,6 +610,34 @@ app.get('/api/question/:id', async (req, res) => {
     }
 });
 
+// Получить информацию о пользователе
+app.get('/api/user/:userId', async (req, res) => {
+    try {
+        // Проверяем, существует ли пользователь в БД
+        const result = await db.query(
+            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
+            [req.params.userId]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            // Если пользователя нет в БД, возвращаем базовую информацию
+            res.json({
+                telegram_id: req.params.userId,
+                username: null
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        // В случае ошибки возвращаем базовые данные
+        res.json({
+            telegram_id: req.params.userId,
+            username: null
+        });
+    }
+});
+
 // ========== TELEGRAM BOT HANDLERS ==========
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
