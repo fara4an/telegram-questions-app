@@ -84,15 +84,28 @@ body {
     background: none;
     font-size: 14px;
     cursor: pointer;
-    color: #6c757d;
     position: relative;
     transition: all 0.3s;
 }
 
 .tab.active {
     background: white;
-    color: #667eea;
     font-weight: bold;
+}
+
+.tab[data-tab="incoming"].active {
+    color: #667eea;
+    border-bottom: 3px solid #667eea;
+}
+
+.tab[data-tab="sent"].active {
+    color: #28a745;
+    border-bottom: 3px solid #28a745;
+}
+
+.tab[data-tab="profile"].active {
+    color: #6c757d;
+    border-bottom: 3px solid #6c757d;
 }
 
 .badge {
@@ -150,6 +163,18 @@ body {
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
+.sent-question-card {
+    background: #f0f9ff;
+    border: 1px solid #b3e0ff;
+    border-left: 4px solid #0088cc;
+}
+
+.answered-question-card {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-left: 4px solid #28a745;
+}
+
 .question-meta {
     font-size: 12px;
     color: #6c757d;
@@ -203,6 +228,11 @@ body {
 
 .btn-secondary {
     background: #6c757d;
+    color: white;
+}
+
+.btn-info {
+    background: #17a2b8;
     color: white;
 }
 
@@ -373,6 +403,42 @@ body {
 .answer-form textarea:focus {
     outline: none;
     border-color: #667eea;
+}
+
+/* ФОРМА ВОПРОСА */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    font-size: 16px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.form-notice {
+    background: #e9ecef;
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px 0;
+    font-size: 14px;
+}
+
+.char-counter {
+    text-align: right;
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 5px;
 }
 
 /* АДАПТИВНОСТЬ */

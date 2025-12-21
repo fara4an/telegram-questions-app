@@ -1,12 +1,14 @@
 require('dotenv').config();
 const express = require('express');
+const { Telegraf } = require('telegraf');
 const path = require('path');
 const { Client } = require('pg');
 const cors = require('cors');
-const { createCanvas, loadImage, registerFont } = require('canvas');
-const { notifyNewQuestion, notifyNewAnswer } = require('./bot');
+const { createCanvas } = require('canvas');
 
 const app = express();
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://ваш-проект.onrender.com';
 
 // ========== БАЗА ДАННЫХ ==========
 const db = new Client({
@@ -24,6 +26,8 @@ async function initDB() {
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
                 username VARCHAR(255),
+                first_name VARCHAR(255),
+                last_name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
@@ -35,12 +39,84 @@ async function initDB() {
                 answer TEXT,
                 is_answered BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                answered_at TIMESTAMP,
-                FOREIGN KEY (to_user_id) REFERENCES users(telegram_id)
+                answered_at TIMESTAMP
             );
+            
+            CREATE INDEX IF NOT EXISTS idx_questions_to_user ON questions(to_user_id);
+            CREATE INDEX IF NOT EXISTS idx_questions_from_user ON questions(from_user_id);
+            CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(is_answered);
         `);
     } catch (error) {
         console.error('❌ Ошибка БД:', error);
+        process.exit(1);
+    }
+}
+
+// ========== УВЕДОМЛЕНИЯ ==========
+async function notifyNewQuestion(toUserId, questionId) {
+    try {
+        // Получаем информацию о вопросе
+        const questionResult = await db.query(
+            `SELECT q.* FROM questions q WHERE q.id = $1`,
+            [questionId]
+        );
+        
+        if (questionResult.rows.length === 0) return;
+        
+        const question = questionResult.rows[0];
+        
+        // Отправляем уведомление получателю
+        const userLink = `https://t.me/${bot.botInfo.username}?start=app`;
+        
+        await bot.telegram.sendMessage(
+            toUserId,
+            `📨 *Новый анонимный вопрос!*\n\n` +
+            `🔒 *От: Аноним*\n\n` +
+            `📝 *Вопрос:*\n${question.text.substring(0, 200)}${question.text.length > 200 ? '...' : ''}\n\n` +
+            `👉 *Открой приложение, чтобы ответить:*`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        {
+                            text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                            web_app: { url: WEB_APP_URL }
+                        }
+                    ]]
+                }
+            }
+        );
+        
+        console.log(`✅ Уведомление отправлено пользователю ${toUserId}`);
+    } catch (error) {
+        console.error('❌ Ошибка отправки уведомления:', error.message);
+    }
+}
+
+async function notifyNewAnswer(fromUserId, questionText) {
+    try {
+        // Отправляем уведомление спрашивающему, что на его вопрос ответили
+        if (fromUserId) {
+            await bot.telegram.sendMessage(
+                fromUserId,
+                `✅ *На ваш вопрос ответили!*\n\n` +
+                `📝 *Ваш вопрос:*\n${questionText.substring(0, 150)}${questionText.length > 150 ? '...' : ''}\n\n` +
+                `👉 *Открой приложение, чтобы увидеть ответ:*`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            {
+                                text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                                web_app: { url: WEB_APP_URL }
+                            }
+                        ]]
+                    }
+                }
+            );
+        }
+    } catch (error) {
+        console.error('❌ Ошибка отправки уведомления об ответе:', error.message);
     }
 }
 
@@ -49,16 +125,45 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// ========== API ДЛЯ МИНИ-АПП ==========
+// ========== API ROUTES ==========
 
-// 1. Получить ВХОДЯЩИЕ вопросы (без ответов)
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'Telegram Questions API'
+    });
+});
+
+// Получить информацию о пользователе
+app.get('/api/user/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT telegram_id, username, first_name, last_name 
+             FROM users WHERE telegram_id = $1`,
+            [req.params.userId]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.status(404).json({ error: 'Пользователь не найден' });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 1. Получить ВХОДЯЩИЕ вопросы (которые другие написали мне)
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
         const result = await db.query(
             `SELECT q.*, u.username as from_username 
              FROM questions q
              LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.to_user_id = $1 AND q.is_answered = FALSE
+             WHERE q.to_user_id = $1 
              ORDER BY q.created_at DESC`,
             [req.params.userId]
         );
@@ -69,7 +174,25 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
     }
 });
 
-// 2. Получить ОТПРАВЛЕННЫЕ вопросы (с ответами)
+// 2. Получить ОТПРАВЛЕННЫЕ вопросы (которые я написал другим)
+app.get('/api/questions/sent/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT q.*, u.username as to_username 
+             FROM questions q
+             LEFT JOIN users u ON q.to_user_id = u.telegram_id
+             WHERE q.from_user_id = $1 
+             ORDER BY q.created_at DESC`,
+            [req.params.userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 3. Получить ОТВЕЧЕННЫЕ вопросы
 app.get('/api/questions/answered/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -87,37 +210,80 @@ app.get('/api/questions/answered/:userId', async (req, res) => {
     }
 });
 
-// 3. Отправить новый вопрос
+// 4. Отправить новый вопрос
 app.post('/api/questions', async (req, res) => {
     try {
-        const { fromUserId, toUserId, text } = req.body;
+        const { from_user_id, to_user_id, text } = req.body;
         
-        // Сохраняем в БД
+        if (!to_user_id || !text) {
+            return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
+        }
+        
+        // Проверяем, существует ли получатель
+        const userResult = await db.query(
+            `SELECT telegram_id FROM users WHERE telegram_id = $1`,
+            [to_user_id]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Получатель не найден' });
+        }
+        
+        // Сохраняем отправителя, если он указан
+        if (from_user_id) {
+            await db.query(
+                `INSERT INTO users (telegram_id) VALUES ($1) 
+                 ON CONFLICT (telegram_id) DO NOTHING`,
+                [from_user_id]
+            );
+        }
+        
+        // Сохраняем вопрос
         const result = await db.query(
             `INSERT INTO questions (from_user_id, to_user_id, text) 
              VALUES ($1, $2, $3) RETURNING *`,
-            [fromUserId || null, toUserId, text]
+            [from_user_id || null, to_user_id, text]
         );
         
-        // Отправляем уведомление
-        await notifyNewQuestion(toUserId, result.rows[0].id);
+        const question = result.rows[0];
+        
+        // Отправляем уведомление получателю
+        await notifyNewQuestion(to_user_id, question.id);
         
         res.status(201).json({ 
             success: true, 
-            question: result.rows[0] 
+            question: question 
         });
+        
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('Error creating question:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// 4. Ответить на вопрос
+// 5. Ответить на вопрос
 app.post('/api/questions/:id/answer', async (req, res) => {
     try {
         const { id } = req.params;
         const { answer } = req.body;
         
+        if (!answer) {
+            return res.status(400).json({ error: 'Не указан ответ' });
+        }
+        
+        // Получаем вопрос для уведомления
+        const questionResult = await db.query(
+            `SELECT * FROM questions WHERE id = $1`,
+            [id]
+        );
+        
+        if (questionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Вопрос не найден' });
+        }
+        
+        const question = questionResult.rows[0];
+        
+        // Обновляем вопрос с ответом
         const result = await db.query(
             `UPDATE questions 
              SET answer = $1, is_answered = TRUE, answered_at = CURRENT_TIMESTAMP 
@@ -125,22 +291,45 @@ app.post('/api/questions/:id/answer', async (req, res) => {
             [answer, id]
         );
         
-        if (result.rows[0]) {
-            // Отправляем уведомление спрашивающему (если он не аноним)
-            const question = result.rows[0];
-            if (question.from_user_id) {
-                await notifyNewAnswer(question.from_user_id, question.text);
-            }
+        // Отправляем уведомление спрашивающему
+        if (question.from_user_id) {
+            await notifyNewAnswer(question.from_user_id, question.text);
         }
         
-        res.json({ success: true, question: result.rows[0] });
+        res.json({ 
+            success: true, 
+            question: result.rows[0] 
+        });
+        
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Server error' });
+        console.error('Error answering question:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// 5. Генерация картинки с вопросом и ответом
+// 6. Удалить вопрос
+app.delete('/api/questions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await db.query(
+            `DELETE FROM questions WHERE id = $1 RETURNING *`,
+            [id]
+        );
+        
+        if (result.rowCount > 0) {
+            res.json({ success: true, message: 'Вопрос удален' });
+        } else {
+            res.status(404).json({ error: 'Вопрос не найден' });
+        }
+        
+    } catch (error) {
+        console.error('Error deleting question:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 7. Генерация картинки с вопросом и ответом
 app.get('/api/generate-image/:questionId', async (req, res) => {
     try {
         const result = await db.query(
@@ -154,7 +343,7 @@ app.get('/api/generate-image/:questionId', async (req, res) => {
             [req.params.questionId]
         );
         
-        if (!result.rows[0]) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Question not found' });
         }
         
@@ -163,6 +352,7 @@ app.get('/api/generate-image/:questionId', async (req, res) => {
         
         res.set('Content-Type', 'image/png');
         res.send(imageBuffer);
+        
     } catch (error) {
         console.error('Error generating image:', error);
         res.status(500).json({ error: 'Image generation failed' });
@@ -234,7 +424,8 @@ async function generateChatImage(question) {
     if (question.answer) {
         ctx.fillStyle = '#555';
         ctx.textAlign = 'right';
-        ctx.fillText(question.to_username || 'Вы', width - padding - avatarSize - 10, y + 16);
+        const responderName = question.to_username ? `@${question.to_username}` : 'Вы';
+        ctx.fillText(responderName, width - padding - avatarSize - 10, y + 16);
         
         // Аватар отвечающего
         ctx.fillStyle = '#0088cc';
@@ -244,7 +435,7 @@ async function generateChatImage(question) {
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 18px Arial';
         ctx.textAlign = 'center';
-        const initial = (question.to_username || 'Y').charAt(0).toUpperCase();
+        const initial = responderName.charAt(0).toUpperCase();
         ctx.fillText(initial, width - padding - avatarSize/2, y + avatarSize/2 + 6);
         
         // Пузырь с ответом
@@ -310,6 +501,143 @@ function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
     if (stroke) ctx.stroke();
 }
 
+// ========== TELEGRAM BOT WEBHOOK ==========
+app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
+    bot.handleUpdate(req.body, res);
+});
+
+// ========== TELEGRAM BOT HANDLERS ==========
+bot.start(async (ctx) => {
+    const userId = ctx.from.id;
+    const firstName = ctx.from.first_name || 'пользователь';
+    const username = ctx.from.username;
+    
+    // Сохраняем пользователя в БД
+    try {
+        await db.query(
+            `INSERT INTO users (telegram_id, username, first_name, last_name) 
+             VALUES ($1, $2, $3, $4) 
+             ON CONFLICT (telegram_id) 
+             DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
+            [userId, username, ctx.from.first_name, ctx.from.last_name]
+        );
+    } catch (error) {
+        console.error('Ошибка сохранения пользователя:', error);
+    }
+    
+    // Если кто-то перешел по ссылке для вопроса
+    if (ctx.startPayload && ctx.startPayload.startsWith('ask_')) {
+        const targetUserId = ctx.startPayload.replace('ask_', '');
+        
+        await ctx.reply(
+            `👋 *${firstName}, привет!*\n\n` +
+            `Ты перешёл по ссылке, чтобы задать *анонимный вопрос*.\n\n` +
+            `Нажми на кнопку ниже 👇 чтобы *сразу открыть форму* для вопроса:`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: '✍️ НАПИСАТЬ ВОПРОС',
+                                web_app: { 
+                                    url: `${WEB_APP_URL}/ask/${targetUserId}?from=telegram&asker=${userId}` 
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                text: '❓ Как это работает?',
+                                callback_data: 'how_it_works'
+                            }
+                        ]
+                    ]
+                }
+            }
+        );
+        
+    } else {
+        // Обычный старт - показываем профиль пользователя
+        const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
+        
+        await ctx.reply(
+            `👋 *Привет, ${firstName}!*\n\n` +
+            `Я бот для *анонимных вопросов*.\n\n` +
+            `🔗 *Твоя персональная ссылка:*\n\`${userLink}\`\n\n` +
+            `*Отправь эту ссылку друзьям* 👇\nОни смогут задать тебе вопрос *анонимно*!`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: '📱 ОТКРЫТЬ МОЁ ПРИЛОЖЕНИЕ',
+                                web_app: { url: WEB_APP_URL }
+                            }
+                        ],
+                        [
+                            {
+                                text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
+                                url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!`
+                            }
+                        ]
+                    ]
+                }
+            }
+        );
+    }
+});
+
+// Обработка кнопки "Как это работает?"
+bot.action('how_it_works', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply(
+        `*📌 Как работает анонимный вопрос:*\n\n` +
+        `1. Ты нажимаешь кнопку "НАПИСАТЬ ВОПРОС"\n` +
+        `2. Открывается форма для ввода вопроса\n` +
+        `3. Ты пишешь вопрос и нажимаешь "Отправить"\n` +
+        `4. Вопрос *анонимно* приходит получателю\n` +
+        `5. Он получает уведомление в Telegram\n` +
+        `6. Он может ответить на вопрос в приложении\n\n` +
+        `*🔒 Анонимность:*\n` +
+        `- Получатель *не увидит* твой профиль\n` +
+        `- Если он ответит, ты получишь уведомление\n` +
+        `- Можно задавать сколько угодно вопросов`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// Команда /app
+bot.command('app', (ctx) => {
+    ctx.reply('Нажми кнопку ниже, чтобы открыть приложение:', {
+        reply_markup: {
+            inline_keyboard: [[
+                {
+                    text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                    web_app: { url: WEB_APP_URL }
+                }
+            ]]
+        }
+    });
+});
+
+// Команда /help
+bot.command('help', (ctx) => {
+    ctx.replyWithMarkdown(
+        `*❓ Помощь*\n\n` +
+        `*/start* - Начать работу, получить свою ссылку\n` +
+        `*/app* - Открыть приложение\n` +
+        `*/help* - Эта справка\n\n` +
+        `*💡 Как задать вопрос:*\n` +
+        `1. Получи ссылку друга командой /start\n` +
+        `2. Перейди по его ссылке\n` +
+        `3. Нажми "НАПИСАТЬ ВОПРОС"\n` +
+        `4. Напиши вопрос и отправь\n\n` +
+        `*🔗 Пример ссылки:*\n` +
+        `\`https://t.me/${ctx.botInfo.username}?start=ask_123456\``
+    );
+});
+
 // ========== СТАТИЧЕСКИЕ СТРАНИЦЫ ==========
 app.get('/ask/:userId', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/ask.html'));
@@ -323,13 +651,35 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
-    await initDB();
-    
-    app.listen(PORT, () => {
-        console.log(`🚀 Сервер запущен на порту ${PORT}`);
-        console.log(`🌐 Web App: ${process.env.WEB_APP_URL}`);
-        console.log(`📱 Мини-апп: ${process.env.WEB_APP_URL}/index.html`);
-    });
+    try {
+        await initDB();
+        
+        // Запускаем сервер
+        app.listen(PORT, async () => {
+            console.log(`🚀 Сервер запущен на порту ${PORT}`);
+            console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
+            console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
+            
+            // Настраиваем вебхук для бота
+            if (process.env.NODE_ENV === 'production') {
+                const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
+                await bot.telegram.setWebhook(webhookUrl);
+                console.log(`🤖 Вебхук установлен: ${webhookUrl}`);
+            } else {
+                // Локально используем поллинг
+                await bot.launch();
+                console.log('🤖 Бот запущен через поллинг');
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Ошибка запуска сервера:', error);
+        process.exit(1);
+    }
 }
+
+// Graceful shutdown
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 startServer().catch(console.error);

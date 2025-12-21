@@ -4,10 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Задать анонимный вопрос</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .target-info {
+            background: #f0f9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #0088cc;
+        }
+    </style>
 </head>
 <body>
-    <div class="app-container" style="max-width: 500px;">
+    <div class="app-container" style="max-width: 500px; margin: 0 auto;">
         <div class="header">
             <h1>✍️ Задать вопрос</h1>
         </div>
@@ -15,7 +33,9 @@
         <div class="tab-content" style="padding: 20px;">
             <div id="ask-form">
                 <div class="question-form">
-                    <p id="targetInfo">Загрузка информации...</p>
+                    <div class="target-info" id="targetInfo">
+                        <p style="margin: 0; font-weight: bold;">Загрузка информации...</p>
+                    </div>
                     
                     <div class="form-group">
                         <label for="questionText">Ваш вопрос:</label>
@@ -24,6 +44,7 @@
                             placeholder="Введите ваш вопрос здесь... Будьте вежливы!"
                             rows="6"
                             maxlength="1000"
+                            style="width: 100%; padding: 15px; border: 2px solid #dee2e6; border-radius: 10px; font-family: inherit; resize: vertical;"
                         ></textarea>
                         <div class="char-counter">
                             <span id="charCount">0</span>/1000 символов
@@ -47,17 +68,70 @@
     </div>
     
     <script>
-        // Получаем ID пользователя из URL
-        const pathParts = window.location.pathname.split('/');
-        const targetUserId = pathParts[pathParts.length - 1];
+        let tg = window.Telegram?.WebApp;
+        let currentUserId = null;
+        let targetUserId = null;
+        let targetUsername = null;
         
-        // Обновляем информацию
-        document.getElementById('targetInfo').textContent = `Вопрос для пользователя #${targetUserId}`;
-        
-        // Счётчик символов
-        document.getElementById('questionText').addEventListener('input', function() {
-            document.getElementById('charCount').textContent = this.value.length;
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                
+                const initData = tg.initDataUnsafe;
+                currentUserId = initData.user?.id;
+                
+                console.log('Текущий пользователь:', currentUserId);
+            } else {
+                // Демо-режим
+                currentUserId = '999999';
+            }
+            
+            // Получаем ID целевого пользователя из URL
+            const pathParts = window.location.pathname.split('/');
+            targetUserId = pathParts[pathParts.length - 1];
+            
+            console.log('Целевой пользователь:', targetUserId);
+            
+            // Загружаем информацию о целевом пользователе
+            loadTargetUserInfo();
+            
+            // Счётчик символов
+            document.getElementById('questionText').addEventListener('input', function() {
+                document.getElementById('charCount').textContent = this.value.length;
+            });
+            
+            // Автофокус на поле ввода
+            document.getElementById('questionText').focus();
         });
+        
+        // Загрузить информацию о пользователе, которому задаем вопрос
+        async function loadTargetUserInfo() {
+            try {
+                const response = await fetch(`/api/user/${targetUserId}`);
+                const user = await response.json();
+                
+                if (user.username) {
+                    targetUsername = user.username;
+                    document.getElementById('targetInfo').innerHTML = `
+                        <p style="margin: 0; font-weight: bold;">Вопрос для: @${user.username}</p>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
+                    `;
+                } else {
+                    document.getElementById('targetInfo').innerHTML = `
+                        <p style="margin: 0; font-weight: bold;">Вопрос для пользователя</p>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки информации:', error);
+                document.getElementById('targetInfo').innerHTML = `
+                    <p style="margin: 0; font-weight: bold;">Вопрос для пользователя</p>
+                    <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">ID: ${targetUserId}</p>
+                `;
+            }
+        }
         
         // Отправка вопроса
         async function sendQuestion() {
@@ -70,8 +144,13 @@
                 return;
             }
             
-            if (questionText.length < 5) {
-                showError('Вопрос слишком короткий (минимум 5 символов)');
+            if (questionText.length < 3) {
+                showError('Вопрос слишком короткий (минимум 3 символа)');
+                return;
+            }
+            
+            if (questionText.length > 1000) {
+                showError('Вопрос слишком длинный (максимум 1000 символов)');
                 return;
             }
             
@@ -85,19 +164,19 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        fromUserId: 0, // 0 = анонимно
-                        toUserId: targetUserId,
+                        from_user_id: currentUserId || null, // null = анонимно
+                        to_user_id: targetUserId,
                         text: questionText
                     })
                 });
                 
                 const data = await response.json();
                 
-                if (data.success) {
+                if (response.ok) {
                     resultDiv.innerHTML = `
                         <div class="answer-bubble" style="background: #d4edda; border-color: #28a745;">
-                            ✅ <strong>Вопрос отправлен!</strong><br>
-                            <small>Вопрос был отправлен анонимно. Ответ придёт получателю в приложении.</small>
+                            <strong>✅ Вопрос отправлен!</strong><br>
+                            <small>Ваш вопрос был отправлен анонимно. Получатель получит уведомление в Telegram.</small>
                         </div>
                     `;
                     
@@ -109,8 +188,10 @@
                     setTimeout(() => {
                         if (window.opener) {
                             window.close();
-                        } else if (window.telegramWebApp) {
-                            window.telegramWebApp.close();
+                        } else if (tg) {
+                            tg.close();
+                        } else {
+                            window.history.back();
                         }
                     }, 3000);
                     
@@ -122,8 +203,8 @@
                 console.error('Ошибка:', error);
                 resultDiv.innerHTML = `
                     <div class="answer-bubble" style="background: #f8d7da; border-color: #dc3545;">
-                        ❌ <strong>Ошибка отправки</strong><br>
-                        <small>${error.message}</small>
+                        <strong>❌ Ошибка отправки</strong><br>
+                        <small>${error.message}</small><br>
                         <button class="btn btn-secondary" onclick="sendQuestion()" style="margin-top: 10px;">
                             🔄 Попробовать снова
                         </button>
@@ -144,11 +225,6 @@
                 resultDiv.innerHTML = '';
             }, 3000);
         }
-        
-        // Автофокус
-        window.onload = function() {
-            document.getElementById('questionText').focus();
-        };
     </script>
 </body>
 </html>

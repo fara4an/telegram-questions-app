@@ -42,7 +42,7 @@ function initUI() {
     document.getElementById('profileId').textContent = userId;
     
     // Генерируем ссылку для вопросов
-    const botUsername = 'ваш_бот_username'; // ЗАМЕНИТЕ!
+    const botUsername = 'dota2servicebot'; // ЗАМЕНИТЕ НАСТОЯЩИЙ USERNAME БОТА!
     const shareLink = `https://t.me/${botUsername}?start=ask_${userId}`;
     document.getElementById('shareLink').textContent = shareLink;
     
@@ -55,7 +55,7 @@ async function loadAllData() {
     try {
         await Promise.all([
             loadIncomingQuestions(),
-            loadAnsweredQuestions(),
+            loadSentQuestions(),
             updateStats()
         ]);
         
@@ -88,21 +88,21 @@ async function loadIncomingQuestions() {
     }
 }
 
-// Загрузить отвеченные вопросы
-async function loadAnsweredQuestions() {
+// Загрузить отправленные вопросы
+async function loadSentQuestions() {
     try {
-        const response = await fetch(`/api/questions/answered/${userId}`);
+        const response = await fetch(`/api/questions/sent/${userId}`);
         const questions = await response.json();
         
-        renderAnsweredQuestions(questions);
-        updateBadge('answered', questions.length);
+        renderSentQuestions(questions);
+        updateBadge('sent', questions.length);
     } catch (error) {
-        console.error('Ошибка загрузки отвеченных:', error);
-        document.getElementById('answered-list').innerHTML = `
+        console.error('Ошибка загрузки отправленных:', error);
+        document.getElementById('sent-list').innerHTML = `
             <div class="empty-state">
                 <div class="icon">⚠️</div>
-                <p>Не удалось загрузить ответы</p>
-                <button class="btn btn-secondary" onclick="loadAnsweredQuestions()">
+                <p>Не удалось загрузить отправленные вопросы</p>
+                <button class="btn btn-secondary" onclick="loadSentQuestions()">
                     Повторить
                 </button>
             </div>
@@ -113,19 +113,22 @@ async function loadAnsweredQuestions() {
 // Обновить статистику
 async function updateStats() {
     try {
-        const [incomingRes, answeredRes] = await Promise.all([
+        const [incomingRes, sentRes] = await Promise.all([
             fetch(`/api/questions/incoming/${userId}`),
-            fetch(`/api/questions/answered/${userId}`)
+            fetch(`/api/questions/sent/${userId}`)
         ]);
         
         const incoming = await incomingRes.json();
+        const sent = await sentRes.json();
+        
+        // Получаем отвеченные вопросы
+        const answeredRes = await fetch(`/api/questions/answered/${userId}`);
         const answered = await answeredRes.json();
         
-        const total = incoming.length + answered.length;
-        
-        document.getElementById('statTotal').textContent = total;
+        document.getElementById('statTotal').textContent = incoming.length + sent.length;
+        document.getElementById('statReceived').textContent = incoming.length;
+        document.getElementById('statSent').textContent = sent.length;
         document.getElementById('statAnswered').textContent = answered.length;
-        document.getElementById('statPending').textContent = incoming.length;
     } catch (error) {
         console.error('Ошибка статистики:', error);
     }
@@ -148,58 +151,81 @@ function renderIncomingQuestions(questions) {
     }
     
     container.innerHTML = questions.map(question => `
-        <div class="question-card" data-id="${question.id}">
+        <div class="question-card ${question.is_answered ? 'answered-question-card' : ''}" data-id="${question.id}">
             <div class="question-meta">
                 <span>${formatDate(question.created_at)}</span>
                 <span>${question.from_username ? `От: ${question.from_username}` : 'Аноним'}</span>
             </div>
             <div class="question-text">${escapeHtml(question.text)}</div>
-            <div class="btn-group">
-                <button class="btn btn-success" onclick="openAnswerModal(${question.id})">
-                    ✍️ Ответить
-                </button>
-                <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
-                    ❌ Удалить
-                </button>
-            </div>
+            ${question.is_answered ? `
+                <div class="answer-bubble">
+                    <strong>Ваш ответ:</strong><br>
+                    ${escapeHtml(question.answer)}
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-info" onclick="shareAnswerAsImage(${question.id})">
+                        🖼️ Выложить ответ
+                    </button>
+                    <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
+                        📋 Копировать
+                    </button>
+                </div>
+            ` : `
+                <div class="btn-group">
+                    <button class="btn btn-success" onclick="openAnswerModal(${question.id})">
+                        ✍️ Ответить
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
+                        ❌ Удалить
+                    </button>
+                </div>
+            `}
         </div>
     `).join('');
 }
 
-// Рендер отвеченных вопросов
-function renderAnsweredQuestions(questions) {
-    const container = document.getElementById('answered-list');
+// Рендер отправленных вопросов
+function renderSentQuestions(questions) {
+    const container = document.getElementById('sent-list');
     
     if (!questions || questions.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <div class="icon">📤</div>
-                <h3>Нет отвеченных вопросов</h3>
-                <p>Ответьте на входящие вопросы</p>
+                <h3>Нет отправленных вопросов</h3>
+                <p>Задайте вопросы другим пользователям</p>
             </div>
         `;
         return;
     }
     
     container.innerHTML = questions.map(question => `
-        <div class="question-card" data-id="${question.id}">
+        <div class="question-card sent-question-card" data-id="${question.id}">
             <div class="question-meta">
                 <span>${formatDate(question.created_at)}</span>
-                <span>Ответ: ${formatDate(question.answered_at)}</span>
+                <span>Кому: ${question.to_username || `ID ${question.to_user_id}`}</span>
             </div>
             <div class="question-text">${escapeHtml(question.text)}</div>
-            <div class="answer-bubble">
-                <strong>Ваш ответ:</strong><br>
-                ${escapeHtml(question.answer)}
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
-                    🖼️ Выложить ответ
-                </button>
-                <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
-                    📋 Копировать текст
-                </button>
-            </div>
+            ${question.is_answered ? `
+                <div class="answer-bubble" style="background: #d4edda;">
+                    <strong>Ответ:</strong><br>
+                    ${escapeHtml(question.answer)}
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-info" onclick="shareAnswerAsImage(${question.id})">
+                        🖼️ Выложить ответ
+                    </button>
+                    <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
+                        📋 Копировать
+                    </button>
+                </div>
+            ` : `
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="deleteQuestion(${question.id})">
+                        ❌ Удалить вопрос
+                    </button>
+                </div>
+            `}
         </div>
     `).join('');
 }
@@ -271,29 +297,21 @@ async function submitAnswer() {
 // ========== ВЫЛОЖЕНИЕ ОТВЕТА ==========
 async function shareAnswerAsImage(questionId) {
     try {
-        // Показываем загрузку
         updateStatus('🖼️ Генерация картинки...');
         
-        // Генерируем картинку
         const response = await fetch(`/api/generate-image/${questionId}`);
         
         if (!response.ok) {
             throw new Error('Ошибка генерации');
         }
         
-        // Получаем blob картинки
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         
-        // Если в Telegram - используем sharePhoto
         if (tg) {
-            // Конвертируем blob в File
             const file = new File([blob], 'answer.png', { type: 'image/png' });
-            
-            // Отправляем через sharePhoto
             tg.sharePhoto(url, 'Мой ответ на анонимный вопрос');
         } else {
-            // В браузере - открываем в новой вкладке
             window.open(url, '_blank');
         }
         
@@ -309,9 +327,9 @@ async function shareAnswerAsImage(questionId) {
 function copyAnswerText(questionId) {
     const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
     const questionText = questionCard.querySelector('.question-text').textContent;
-    const answerText = questionCard.querySelector('.answer-bubble').textContent.replace('Ваш ответ:\n', '').trim();
+    const answerText = questionCard.querySelector('.answer-bubble')?.textContent.replace('Ваш ответ:\n', '').replace('Ответ:\n', '').trim() || '';
     
-    const fullText = `Вопрос: ${questionText}\n\nОтвет: ${answerText}`;
+    const fullText = answerText ? `Вопрос: ${questionText}\n\nОтвет: ${answerText}` : `Вопрос: ${questionText}`;
     
     navigator.clipboard.writeText(fullText).then(() => {
         alert('✅ Текст скопирован!');
@@ -324,13 +342,20 @@ function copyAnswerText(questionId) {
 async function deleteQuestion(questionId) {
     if (!confirm('Удалить этот вопрос?')) return;
     
-    // В реальном проекте здесь должен быть DELETE запрос
-    // Для демо просто удаляем из DOM
-    const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
-    if (questionCard) {
-        questionCard.remove();
-        await updateStats();
-        alert('❌ Вопрос удалён');
+    try {
+        const response = await fetch(`/api/questions/${questionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            alert('❌ Вопрос удалён');
+            await loadAllData();
+        } else {
+            throw new Error('Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка удаления:', error);
+        alert('❌ Не удалось удалить вопрос');
     }
 }
 
@@ -357,10 +382,9 @@ function shareToTelegram() {
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function setupTabs() {
-    // Переключение вкладок
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
-            const tabId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+            const tabId = this.getAttribute('data-tab');
             
             // Обновляем активные вкладки
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

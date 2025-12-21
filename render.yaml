@@ -19,28 +19,9 @@ services:
           name: telegram-questions-db
           property: connectionString
 
-  - type: postgres
-    name: telegram-questions-db
+databases:
+  - name: telegram-questions-db
     region: frankfurt
     plan: free
     databaseName: telegram_questions
     user: telegram_user
-
-  - type: worker
-    name: telegram-bot
-    env: node
-    region: frankfurt
-    plan: free
-    buildCommand: npm install
-    startCommand: npm run bot
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: BOT_TOKEN
-        sync: false
-      - key: WEB_APP_URL
-        sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: telegram-questions-db
-          property: connectionString

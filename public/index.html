@@ -23,13 +23,13 @@
         
         <!-- ВКЛАДКИ -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('incoming')" id="tab-incoming">
+            <button class="tab active" data-tab="incoming" id="tab-incoming">
                 📥 Входящие <span class="badge" id="incomingBadge">0</span>
             </button>
-            <button class="tab" onclick="switchTab('answered')" id="tab-answered">
-                ✅ Отвеченные <span class="badge" id="answeredBadge">0</span>
+            <button class="tab" data-tab="sent" id="tab-sent">
+                📤 Отправленные <span class="badge" id="sentBadge">0</span>
             </button>
-            <button class="tab" onclick="switchTab('profile')" id="tab-profile">
+            <button class="tab" data-tab="profile" id="tab-profile">
                 👤 Профиль
             </button>
         </div>
@@ -38,23 +38,27 @@
         <div class="tab-content">
             <!-- 1. ВХОДЯЩИЕ ВОПРОСЫ -->
             <div id="content-incoming" class="page active">
-                <div class="page-header">
+                <div class="page-header" style="padding: 20px 20px 0 20px;">
                     <h2>📥 Входящие вопросы</h2>
-                    <button class="btn-refresh" onclick="loadIncomingQuestions()">🔄</button>
+                    <button class="btn btn-secondary" onclick="loadIncomingQuestions()" style="padding: 5px 10px; font-size: 12px;">
+                        🔄 Обновить
+                    </button>
                 </div>
                 <div id="incoming-list" class="questions-list">
                     <div class="loading">Загрузка вопросов...</div>
                 </div>
             </div>
             
-            <!-- 2. ОТВЕЧЕННЫЕ ВОПРОСЫ -->
-            <div id="content-answered" class="page">
-                <div class="page-header">
-                    <h2>✅ Отвеченные вопросы</h2>
-                    <button class="btn-refresh" onclick="loadAnsweredQuestions()">🔄</button>
+            <!-- 2. ОТПРАВЛЕННЫЕ ВОПРОСЫ -->
+            <div id="content-sent" class="page">
+                <div class="page-header" style="padding: 20px 20px 0 20px;">
+                    <h2>📤 Отправленные вопросы</h2>
+                    <button class="btn btn-secondary" onclick="loadSentQuestions()" style="padding: 5px 10px; font-size: 12px;">
+                        🔄 Обновить
+                    </button>
                 </div>
-                <div id="answered-list" class="questions-list">
-                    <div class="loading">Загрузка ответов...</div>
+                <div id="sent-list" class="questions-list">
+                    <div class="loading">Загрузка отправленных вопросов...</div>
                 </div>
             </div>
             
@@ -84,12 +88,12 @@
                                 <div class="stat-label">Всего вопросов</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-number" id="statAnswered">0</div>
-                                <div class="stat-label">Отвечено</div>
+                                <div class="stat-number" id="statReceived">0</div>
+                                <div class="stat-label">Получено</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-number" id="statPending">0</div>
-                                <div class="stat-label">Ждут ответа</div>
+                                <div class="stat-number" id="statSent">0</div>
+                                <div class="stat-label">Отправлено</div>
                             </div>
                         </div>
                     </div>
@@ -108,7 +112,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>✍️ Ответить на вопрос</h3>
-                <button class="btn-close" onclick="closeAnswerModal()">×</button>
+                <button class="btn-close" onclick="closeAnswerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
             </div>
             <div class="modal-body">
                 <div id="questionPreview"></div>
