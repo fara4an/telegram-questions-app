@@ -685,3 +685,189 @@ async function createTestImage(question) {
         canvas.toBlob(resolve, 'image/png');
     });
 }
+
+// ========== ФУНКЦИИ ШЕРИНГА ==========
+
+// Открыть модалку шеринга
+async function openShareModal(questionId) {
+    await shareAnswer(questionId);
+}
+
+// Функция шеринга (та же что и в index.html)
+async function shareAnswer(questionId) {
+    try {
+        // Создаем модалку
+        const modalHTML = `
+            <div class="modal active" id="shareModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>🖼️ Поделиться ответом</h3>
+                        <button class="btn-close" onclick="closeShareModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="text-align: center; padding: 20px;">
+                            <div class="loading-spinner" style="width: 50px; height: 50px; margin: 0 auto;"></div>
+                            <p style="margin-top: 15px; color: var(--tg-secondary-text);">
+                                Готовим картинку с вашим ответом...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Добавляем модалку
+        const existingModal = document.getElementById('shareModal');
+        if (existingModal) existingModal.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Получаем данные вопроса
+        const response = await fetch(`/api/question/${questionId}`);
+        if (!response.ok) throw new Error('Вопрос не найден');
+        
+        const question = await response.json();
+        
+        // Генерируем картинку
+        let imageUrl;
+        try {
+            const imageResponse = await fetch(`/api/generate-image/${questionId}`);
+            if (imageResponse.ok) {
+                const blob = await imageResponse.blob();
+                imageUrl = URL.createObjectURL(blob);
+            } else {
+                // Используем тестовую картинку
+                imageUrl = await createTestImage(question);
+            }
+        } catch (error) {
+            imageUrl = await createTestImage(question);
+        }
+        
+        // Готовим текст
+        const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+        const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n\n${userLink}`;
+        
+        // Обновляем модалку
+        const modalBody = document.querySelector('#shareModal .modal-body');
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 2px solid var(--tg-border-color);" alt="Превью ответа">
+                    <p style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">Картинка готова к скачиванию</p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--tg-text-color);">
+                        Текст для поста:
+                    </label>
+                    <textarea 
+                        id="shareText" 
+                        rows="4"
+                        style="width: 100%; padding: 12px; border: 1px solid var(--tg-border-color); border-radius: 8px; background: var(--tg-input-bg); color: var(--tg-text-color); font-size: 14px; resize: vertical;"
+                        readonly
+                    >${shareText}</textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="copyShareText()" style="flex: 1;">
+                        📋 Копировать текст
+                    </button>
+                    <button class="btn btn-primary" onclick="downloadShareImage('${imageUrl}')" style="flex: 1;">
+                        💾 Скачать картинку
+                    </button>
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('Ошибка шеринга:', error);
+        showNotification('Ошибка: ' + error.message, 'error');
+        closeShareModal();
+    }
+}
+
+function closeShareModal() {
+    const modal = document.getElementById('shareModal');
+    if (modal) modal.remove();
+}
+
+function copyShareText() {
+    const textarea = document.getElementById('shareText');
+    if (!textarea) return;
+    
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    
+    showNotification('Текст скопирован в буфер обмена!', 'success');
+}
+
+async function downloadShareImage(imageUrl) {
+    try {
+        // Если это Blob URL, создаем скачивание
+        const a = document.createElement('a');
+        a.href = imageUrl;
+        a.download = `мой-ответ-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        showNotification('✅ Картинка скачана! Теперь опубликуйте её с текстом.', 'success');
+        
+        // Ждем 2 секунды и закрываем модалку
+        setTimeout(() => {
+            closeShareModal();
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Ошибка скачивания:', error);
+        showNotification('Ошибка скачивания картинки', 'error');
+    }
+}
+
+// Создать тестовую картинку
+async function createTestImage(question) {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 800;
+        canvas.height = 400;
+        
+        // Фон
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, 800, 400);
+        
+        // Заголовок
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬 Анонимный вопрос', 400, 80);
+        
+        // Вопрос
+        ctx.font = '20px Arial';
+        ctx.fillText('Вопрос:', 400, 140);
+        
+        ctx.font = '18px Arial';
+        const questionText = question.text.substring(0, 60) + (question.text.length > 60 ? '...' : '');
+        ctx.fillText(`"${questionText}"`, 400, 180);
+        
+        // Ответ
+        ctx.fillStyle = '#2e8de6';
+        ctx.font = 'bold 22px Arial';
+        if (question.answer) {
+            const answerText = question.answer.substring(0, 40) + (question.answer.length > 40 ? '...' : '');
+            ctx.fillText(`Ответ: ${answerText}`, 400, 240);
+        } else {
+            ctx.fillText('Ответ успешно отправлен!', 400, 240);
+        }
+        
+        // Ссылка
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '16px Arial';
+        ctx.fillText('t.me/dota2servicebot', 400, 320);
+        
+        // Создаем Data URL
+        const dataUrl = canvas.toDataURL('image/png');
+        resolve(dataUrl);
+    });
+}

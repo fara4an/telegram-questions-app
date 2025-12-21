@@ -200,107 +200,126 @@
     
     <script src="app.js"></script>
     <script>
-        // Счетчик символов для ответа
-        document.addEventListener('DOMContentLoaded', function() {
-            const answerText = document.getElementById('answerText');
-            const charCount = document.getElementById('answerCharCount');
-            
-            if (answerText && charCount) {
-                answerText.addEventListener('input', function() {
-                    charCount.textContent = this.value.length;
-                });
-            }
-            
-            // Инициализация статус-точки
-            const statusText = document.getElementById('statusText');
-            if (statusText) {
-                statusText.innerHTML = '<span class="status-dot"></span> ' + statusText.innerHTML;
-            }
-        });
+        // Вместо функции openShareModal добавьте:
+
+async function shareAnswer(questionId) {
+    try {
+        // Создаем модалку шеринга
+        const modalHTML = `
+            <div class="modal active" id="shareModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>🖼️ Поделиться ответом</h3>
+                        <button class="btn-close" onclick="closeShareModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="text-align: center; padding: 20px;">
+                            <div class="loading-spinner" style="width: 50px; height: 50px; margin: 0 auto;"></div>
+                            <p style="margin-top: 15px; color: var(--tg-secondary-text);">
+                                Готовим картинку с вашим ответом...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
         
-        // Функции для шеринга ответа
-        let shareImageBlob = null;
-        let shareQuestionData = null;
+        // Добавляем модалку
+        const existingModal = document.getElementById('shareModal');
+        if (existingModal) existingModal.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
         
-        async function shareAnswer(questionId) {
-            try {
-                // Получаем данные вопроса
-                const response = await fetch(`/api/question/${questionId}`);
-                if (!response.ok) throw new Error('Вопрос не найден');
-                
-                shareQuestionData = await response.json();
-                
-                // Показываем превью вопроса
-                document.getElementById('shareQuestionPreview').innerHTML = `
-                    <div style="font-size: 13px; color: var(--tg-secondary-text); margin-bottom: 5px;">Вопрос:</div>
-                    <div style="font-size: 15px; color: var(--tg-text-color);">${shareQuestionData.text.substring(0, 150)}${shareQuestionData.text.length > 150 ? '...' : ''}</div>
-                `;
-                
-                // Генерируем картинку
-                const imageResponse = await fetch(`/api/generate-image/${questionId}`);
-                if (!imageResponse.ok) throw new Error('Ошибка генерации картинки');
-                
-                shareImageBlob = await imageResponse.blob();
-                const imageUrl = URL.createObjectURL(shareImageBlob);
-                
-                // Показываем превью картинки
-                document.getElementById('shareImagePreview').innerHTML = `
+        // Получаем данные вопроса
+        const response = await fetch(`/api/question/${questionId}`);
+        if (!response.ok) throw new Error('Вопрос не найден');
+        
+        const question = await response.json();
+        
+        // Генерируем картинку
+        let imageUrl;
+        try {
+            const imageResponse = await fetch(`/api/generate-image/${questionId}`);
+            if (imageResponse.ok) {
+                const blob = await imageResponse.blob();
+                imageUrl = URL.createObjectURL(blob);
+            } else {
+                // Используем тестовую картинку
+                imageUrl = 'https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Ответ+на+вопрос';
+            }
+        } catch (error) {
+            imageUrl = 'https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Ответ+на+вопрос';
+        }
+        
+        // Готовим текст
+        const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+        const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n\n${userLink}`;
+        
+        // Обновляем модалку
+        const modalBody = document.querySelector('#shareModal .modal-body');
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
                     <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 2px solid var(--tg-border-color);" alt="Превью ответа">
-                    <p style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">Картинка готова!</p>
-                `;
+                    <p style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">Картинка готова к скачиванию</p>
+                </div>
                 
-                // Генерируем текст для поста
-                const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
-                const shareText = `💬 Мой ответ на анонимный вопрос!\n\n"${shareQuestionData.text.substring(0, 100)}${shareQuestionData.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!\n\n${userLink}`;
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--tg-text-color);">
+                        Текст для поста:
+                    </label>
+                    <textarea 
+                        id="shareText" 
+                        rows="4"
+                        style="width: 100%; padding: 12px; border: 1px solid var(--tg-border-color); border-radius: 8px; background: var(--tg-input-bg); color: var(--tg-text-color); font-size: 14px; resize: vertical;"
+                        readonly
+                    >${shareText}</textarea>
+                </div>
                 
-                document.getElementById('shareText').value = shareText;
-                
-                // Открываем модалку
-                document.getElementById('shareAnswerModal').classList.add('active');
-                
-            } catch (error) {
-                console.error('Ошибка шеринга:', error);
-                alert('Не удалось подготовить ответ для шеринга: ' + error.message);
-            }
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="copyShareText()" style="flex: 1;">
+                        📋 Копировать текст
+                    </button>
+                    <button class="btn btn-primary" onclick="downloadShareImage('${imageUrl}')" style="flex: 1;">
+                        💾 Скачать картинку
+                    </button>
+                </div>
+            `;
         }
         
-        function closeShareAnswerModal() {
-            document.getElementById('shareAnswerModal').classList.remove('active');
-            if (shareImageBlob) {
-                URL.revokeObjectURL(URL.createObjectURL(shareImageBlob));
-                shareImageBlob = null;
-            }
-            shareQuestionData = null;
-        }
-        
-        function copyShareText() {
-            const textArea = document.getElementById('shareText');
-            textArea.select();
-            document.execCommand('copy');
-            alert('Текст скопирован в буфер обмена!');
-        }
-        
-        function downloadAndShare() {
-            if (!shareImageBlob) {
-                alert('Картинка не загружена!');
-                return;
-            }
-            
-            // Скачиваем картинку
-            const url = URL.createObjectURL(shareImageBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `ответ-на-вопрос-${shareQuestionData?.id || Date.now()}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            
-            // Предлагаем скопировать текст
-            copyShareText();
-            
-            closeShareAnswerModal();
-            alert('✅ Картинка скачана! Текст скопирован в буфер обмена.');
-        }
+    } catch (error) {
+        console.error('Ошибка шеринга:', error);
+        alert('Ошибка: ' + error.message);
+        closeShareModal();
+    }
+}
+
+function closeShareModal() {
+    const modal = document.getElementById('shareModal');
+    if (modal) modal.remove();
+}
+
+function copyShareText() {
+    const textarea = document.getElementById('shareText');
+    if (!textarea) return;
+    
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    
+    alert('Текст скопирован в буфер обмена!');
+}
+
+function downloadShareImage(imageUrl) {
+    const a = document.createElement('a');
+    a.href = imageUrl;
+    a.download = `мой-ответ-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    alert('Картинка скачана! Теперь опубликуйте её с текстом.');
+    closeShareModal();
+}
     </script>
 </body>
 </html>
