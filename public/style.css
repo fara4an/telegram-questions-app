@@ -457,24 +457,40 @@ body {
   flex: 1;
 }
 
-.btn-copy {
-  background: var(--tg-accent-color);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.share-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 15px;
 }
 
-.btn-copy:hover {
-  background: var(--tg-accent-hover);
+.share-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px;
+  background: var(--tg-input-bg);
+  border: 1px solid var(--tg-border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.share-btn:hover {
+  background: #2d2d2d;
+  transform: translateY(-2px);
+}
+
+.share-btn .icon {
+  font-size: 24px;
+}
+
+.share-btn .label {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .stats-grid {
@@ -573,10 +589,6 @@ body {
   gap: 10px;
 }
 
-.modal-header h3::before {
-  content: "✍️";
-}
-
 .btn-close {
   background: none;
   border: none;
@@ -610,6 +622,59 @@ body {
   justify-content: flex-end;
   gap: 12px;
   background: var(--tg-bg-color);
+}
+
+/* МОДАЛКА ВЫБОРА ШЕРИНГА */
+.share-modal .modal-content {
+  max-width: 400px;
+}
+
+.share-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.share-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px 15px;
+  background: var(--tg-input-bg);
+  border: 2px solid var(--tg-border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  gap: 12px;
+}
+
+.share-option:hover {
+  background: #2d2d2d;
+  border-color: var(--tg-accent-color);
+  transform: translateY(-3px);
+}
+
+.share-option.active {
+  background: rgba(46, 141, 230, 0.1);
+  border-color: var(--tg-accent-color);
+}
+
+.share-option .icon {
+  font-size: 32px;
+}
+
+.share-option .label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.share-option .description {
+  font-size: 12px;
+  color: var(--tg-secondary-text);
+  margin-top: 5px;
 }
 
 /* СТАТУС БАР */
@@ -817,6 +882,14 @@ textarea::placeholder {
   
   .modal-content {
     margin: 10px;
+  }
+  
+  .share-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .share-buttons {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -588,6 +588,28 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
     bot.handleUpdate(req.body, res);
 });
 
+// Получить информацию о конкретном вопросе
+app.get('/api/question/:id', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT q.*, u.username as from_username 
+             FROM questions q
+             LEFT JOIN users u ON q.from_user_id = u.telegram_id
+             WHERE q.id = $1`,
+            [req.params.id]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.status(404).json({ error: 'Вопрос не найден' });
+        }
+    } catch (error) {
+        console.error('Error fetching question:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // ========== TELEGRAM BOT HANDLERS ==========
 bot.start(async (ctx) => {
     const userId = ctx.from.id;

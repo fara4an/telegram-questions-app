@@ -69,23 +69,20 @@
                     </div>
                     
                     <div class="share-section">
-                        <h3>🔗 Ваша ссылка для вопросов</h3>
+                        <h3>🔗 Пригласить друзей</h3>
                         <p style="color: var(--tg-secondary-text); margin-bottom: 15px; font-size: 14px;">
-                            Отправьте эту ссылку друзьям, чтобы они могли задать вам анонимные вопросы
+                            Друзья смогут задать вам анонимные вопросы
                         </p>
-                        <div class="share-link" id="shareLinkContainer">
-                            <code id="shareLink">Загрузка...</code>
-                            <button class="btn-copy" onclick="copyShareLink()">
-                                <span>📋</span> Копировать
-                            </button>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-top: 15px;">
-                            <button class="btn btn-primary" onclick="shareToTelegram()" style="flex: 1;">
-                                📤 Поделиться в Telegram
-                            </button>
-                            <button class="btn btn-secondary" onclick="copyShareLink()" style="flex: 1;">
-                                📋 Скопировать ссылку
-                            </button>
+                        
+                        <div class="share-buttons">
+                            <div class="share-btn" onclick="shareProfileToTelegram()">
+                                <div class="icon">📱</div>
+                                <div class="label">В историю</div>
+                            </div>
+                            <div class="share-btn" onclick="shareProfileToTelegram()">
+                                <div class="icon">💬</div>
+                                <div class="label">В чаты</div>
+                            </div>
                         </div>
                     </div>
                     

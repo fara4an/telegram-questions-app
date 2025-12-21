@@ -3,6 +3,7 @@ let tg = window.Telegram?.WebApp;
 let userId = null;
 let username = null;
 let currentQuestionId = null;
+let shareImageUrl = null;
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', async function() {
@@ -159,8 +160,8 @@ function renderIncomingQuestions(questions) {
                 <div class="icon">💭</div>
                 <h3>Нет вопросов</h3>
                 <p>Поделитесь ссылкой, чтобы получать вопросы от друзей</p>
-                <button class="btn btn-primary" onclick="shareToTelegram()" style="margin-top: 20px;">
-                    📤 Поделиться ссылкой
+                <button class="btn btn-primary" onclick="shareProfileToTelegram()" style="margin-top: 20px;">
+                    📤 Поделиться профилем
                 </button>
             </div>
         `;
@@ -186,11 +187,11 @@ function renderIncomingQuestions(questions) {
                     <div style="margin-top: 8px;">${escapeHtml(question.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
-                        🖼️ Поделиться картинкой
+                    <button class="btn btn-primary" onclick="openShareModal(${question.id})">
+                        🖼️ Поделиться
                     </button>
-                    <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
-                        📋 Копировать
+                    <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
+                        🗑️ Удалить
                     </button>
                 </div>
             ` : `
@@ -242,16 +243,13 @@ function renderSentQuestions(questions) {
                     <div style="margin-top: 8px;">${escapeHtml(question.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
-                        🖼️ Поделиться картинкой
-                    </button>
-                    <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
-                        📋 Копировать
+                    <button class="btn btn-primary" onclick="openShareModal(${question.id})">
+                        🖼️ Поделиться
                     </button>
                 </div>
             ` : `
                 <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="deleteQuestion(${question.id})" style="background: var(--tg-input-bg);">
+                    <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
                         🗑️ Удалить вопрос
                     </button>
                 </div>
@@ -340,34 +338,82 @@ async function submitAnswer() {
     }
 }
 
-// ========== ВЫЛОЖЕНИЕ ОТВЕТА - ИСПРАВЛЕННАЯ ВЕРСИЯ ==========
-async function shareAnswerAsImage(questionId) {
-    try {
-        // Показываем прогресс
-        const progressId = `progress-${Date.now()}`;
-        showNotification('🖼️ Генерация картинки...', 'info', 0, progressId);
-        
-        // Добавляем прогресс бар в уведомление
-        const notification = document.querySelector(`[data-id="${progressId}"]`);
-        if (notification) {
-            notification.innerHTML += `
-                <div class="progress-bar" style="margin-top: 10px;">
-                    <div class="progress-fill" id="progress-fill-${progressId}"></div>
+// ========== ШЕРИНГ ==========
+async function openShareModal(questionId) {
+    currentQuestionId = questionId;
+    
+    // Создаем модалку выбора шеринга
+    const shareModalHTML = `
+        <div class="modal active share-modal" id="shareModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🖼️ Поделиться ответом</h3>
+                    <button class="btn-close" onclick="closeShareModal()">×</button>
                 </div>
-            `;
-            
-            // Анимируем прогресс
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += 10;
-                const fill = document.getElementById(`progress-fill-${progressId}`);
-                if (fill) fill.style.width = `${progress}%`;
-                if (progress >= 90) clearInterval(interval);
-            }, 200);
-        }
+                <div class="modal-body">
+                    <p style="color: var(--tg-secondary-text); margin-bottom: 20px; text-align: center;">
+                        Как вы хотите поделиться этим ответом?
+                    </p>
+                    
+                    <div class="share-options">
+                        <div class="share-option" onclick="generateAndShare('story')">
+                            <div class="icon">📱</div>
+                            <div class="label">В историю</div>
+                            <div class="description">Поделиться в Stories</div>
+                        </div>
+                        
+                        <div class="share-option" onclick="generateAndShare('chats')">
+                            <div class="icon">💬</div>
+                            <div class="label">В чаты</div>
+                            <div class="description">Отправить друзьям</div>
+                        </div>
+                    </div>
+                    
+                    <div id="shareProgress" style="display: none; margin-top: 20px;">
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <div class="loading-spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
+                            <p style="margin-top: 10px; color: var(--tg-accent-color);">Генерируем картинку...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Добавляем модалку в DOM
+    const existingModal = document.getElementById('shareModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', shareModalHTML);
+}
+
+function closeShareModal() {
+    const shareModal = document.getElementById('shareModal');
+    if (shareModal) {
+        shareModal.remove();
+    }
+    shareImageUrl = null;
+}
+
+async function generateAndShare(type) {
+    if (!currentQuestionId) {
+        showNotification('Ошибка: вопрос не выбран', 'error');
+        return;
+    }
+    
+    const shareProgress = document.getElementById('shareProgress');
+    if (shareProgress) {
+        shareProgress.style.display = 'block';
+    }
+    
+    try {
+        // Показываем уведомление о генерации
+        showNotification('🖼️ Генерируем картинку...', 'info', 0);
         
         // Генерируем изображение через сервер
-        const response = await fetch(`/api/generate-image/${questionId}`);
+        const response = await fetch(`/api/generate-image/${currentQuestionId}`);
         
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
@@ -376,87 +422,110 @@ async function shareAnswerAsImage(questionId) {
         
         // Получаем blob картинки
         const blob = await response.blob();
-        
-        // Завершаем прогресс
-        const fill = document.getElementById(`progress-fill-${progressId}`);
-        if (fill) fill.style.width = '100%';
-        
-        // Создаем URL для изображения
         const url = URL.createObjectURL(blob);
+        shareImageUrl = url;
         
-        // Если в Telegram - используем sharePhoto
-        if (tg && tg.sharePhoto) {
-            // Создаем временную ссылку
-            const tempUrl = URL.createObjectURL(blob);
-            
-            // Для Telegram Web App нужно использовать специальный метод
-            try {
-                // Показываем изображение в новом окне для скачивания
-                showNotification('✅ Картинка готова! Нажмите, чтобы сохранить', 'success');
-                
-                // Открываем изображение в новой вкладке для скачивания
-                setTimeout(() => {
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = tempUrl;
-                    downloadLink.download = `question-answer-${questionId}.png`;
-                    downloadLink.click();
-                }, 1000);
-                
-            } catch (shareError) {
-                console.log('Telegram share не доступен:', shareError);
-                // Открываем в новой вкладке
-                window.open(tempUrl, '_blank');
+        // Получаем информацию о вопросе для текста
+        const questionResponse = await fetch(`/api/question/${currentQuestionId}`);
+        const question = questionResponse.ok ? await questionResponse.json() : null;
+        
+        // Получаем ссылку для приглашения
+        const botUsername = 'ваш_бот_username'; // Должен быть такой же как в initUI()
+        const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+        
+        // Текст для шеринга
+        const shareText = question 
+            ? `💬 Мой ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n👇 Задай и мне анонимный вопрос!`
+            : `💬 Мой ответ на анонимный вопрос!\n\n👇 Задай и мне анонимный вопрос!`;
+        
+        const fullText = `${shareText}\n\n${inviteLink}`;
+        
+        // Закрываем модалку выбора
+        closeShareModal();
+        
+        // В зависимости от типа шеринга
+        if (tg) {
+            if (type === 'story') {
+                // Пробуем поделиться в историю
+                try {
+                    if (tg.sharePhoto) {
+                        tg.sharePhoto(url, fullText);
+                        showNotification('✅ Открываем шеринг в историю...', 'success');
+                    } else {
+                        // Если метод не доступен, скачиваем
+                        downloadAndShare(url, fullText);
+                    }
+                } catch (error) {
+                    console.log('Шеринг в историю не доступен:', error);
+                    downloadAndShare(url, fullText);
+                }
+            } else if (type === 'chats') {
+                // Пробуем поделиться в чаты
+                try {
+                    if (tg.openTelegramLink) {
+                        const encodedText = encodeURIComponent(fullText);
+                        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodedText}`;
+                        tg.openTelegramLink(shareUrl);
+                        showNotification('✅ Открываем шеринг в чаты...', 'success');
+                    } else {
+                        downloadAndShare(url, fullText);
+                    }
+                } catch (error) {
+                    console.log('Шеринг в чаты не доступен:', error);
+                    downloadAndShare(url, fullText);
+                }
             }
-            
         } else {
-            // В браузере - скачиваем файл
-            const downloadLink = document.createElement('a');
-            downloadLink.href = url;
-            downloadLink.download = `question-answer-${questionId}.png`;
-            downloadLink.click();
-            
-            showNotification('✅ Картинка скачана!', 'success');
+            // В браузере - просто скачиваем
+            downloadAndShare(url, fullText);
         }
-        
-        // Очищаем уведомление через 3 секунды
-        setTimeout(() => {
-            const notification = document.querySelector(`[data-id="${progressId}"]`);
-            if (notification) notification.remove();
-        }, 3000);
         
     } catch (error) {
         console.error('Ошибка генерации картинки:', error);
         showNotification(`❌ Ошибка: ${error.message}`, 'error');
+        
+        const shareProgress = document.getElementById('shareProgress');
+        if (shareProgress) {
+            shareProgress.style.display = 'none';
+        }
     }
 }
 
-function copyAnswerText(questionId) {
-    const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
-    if (!questionCard) {
-        showNotification('Вопрос не найден', 'error');
-        return;
+function downloadAndShare(imageUrl, text) {
+    // Скачиваем изображение
+    const downloadLink = document.createElement('a');
+    downloadLink.href = imageUrl;
+    downloadLink.download = `question-answer-${currentQuestionId}.png`;
+    downloadLink.click();
+    
+    // Показываем текст для копирования
+    showNotification(`✅ Картинка скачана!\n\nСкопируйте текст:\n${text}`, 'success', 5000);
+    
+    // Даем возможность скопировать текст
+    setTimeout(() => {
+        if (confirm('Скопировать текст для поста?')) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('✅ Текст скопирован!', 'success');
+            });
+        }
+    }, 1000);
+}
+
+// ========== ШЕРИНГ ПРОФИЛЯ ==========
+async function shareProfileToTelegram() {
+    const botUsername = 'ваш_бот_username'; // Должен быть такой же как в initUI()
+    const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+    const shareText = `💬 Задай мне анонимный вопрос!\n\nЯ буду отвечать на все вопросы здесь 👇\n\n${inviteLink}`;
+    
+    if (tg && tg.openTelegramLink) {
+        const encodedText = encodeURIComponent(shareText);
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodedText}`;
+        tg.openTelegramLink(shareUrl);
+    } else {
+        // В браузере
+        const fullUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
+        window.open(fullUrl, '_blank', 'noopener,noreferrer');
     }
-    
-    const questionText = questionCard.querySelector('.question-text').textContent;
-    const answerBubble = questionCard.querySelector('.answer-bubble');
-    
-    if (!answerBubble) {
-        showNotification('Ответ не найден', 'warning');
-        return;
-    }
-    
-    const answerText = answerBubble.textContent
-        .replace('Ваш ответ:', '')
-        .replace('Ответ:', '')
-        .trim();
-    
-    const fullText = `Вопрос: ${questionText}\n\nОтвет: ${answerText}`;
-    
-    navigator.clipboard.writeText(fullText).then(() => {
-        showNotification('✅ Текст скопирован в буфер!', 'success');
-    }).catch(() => {
-        showNotification('❌ Не удалось скопировать', 'error');
-    });
 }
 
 // ========== УДАЛЕНИЕ ВОПРОСА ==========
@@ -480,30 +549,16 @@ async function deleteQuestion(questionId) {
     }
 }
 
-// ========== ПРОФИЛЬ ==========
-function copyShareLink() {
-    const link = document.getElementById('shareLink').textContent;
-    
-    navigator.clipboard.writeText(link).then(() => {
-        showNotification('✅ Ссылка скопирована!', 'success');
-    }).catch(() => {
-        showNotification('❌ Не удалось скопировать', 'error');
-    });
-}
-
-function shareToTelegram() {
-    const link = document.getElementById('shareLink').textContent;
-    
-    if (tg && tg.openTelegramLink) {
-        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`);
-    } else {
-        // Открываем в новом окне
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`, '_blank', 'noopener,noreferrer');
-    }
-}
-
 // ========== УВЕДОМЛЕНИЯ ==========
 function showNotification(message, type = 'info', duration = 3000, id = null) {
+    // Удаляем старые уведомления
+    const oldNotifications = document.querySelectorAll('.notification');
+    oldNotifications.forEach(n => {
+        if (n.getAttribute('data-id') !== id) {
+            n.remove();
+        }
+    });
+    
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.setAttribute('data-id', id || `notification-${Date.now()}`);
@@ -515,18 +570,27 @@ function showNotification(message, type = 'info', duration = 3000, id = null) {
         info: '💡'
     };
     
+    // Разбиваем сообщение на строки
+    const messageLines = message.split('\n').map(line => 
+        `<div style="margin: 2px 0;">${line}</div>`
+    ).join('');
+    
     notification.innerHTML = `
         <div class="notification-icon">${icons[type] || '💡'}</div>
-        <div>${message}</div>
+        <div style="flex: 1;">${messageLines}</div>
     `;
     
     document.body.appendChild(notification);
     
     if (duration > 0) {
         setTimeout(() => {
-            notification.remove();
+            if (notification.parentNode) {
+                notification.remove();
+            }
         }, duration);
     }
+    
+    return notification;
 }
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
@@ -620,6 +684,13 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Очистка URL при разгрузке страницы
+window.addEventListener('beforeunload', () => {
+    if (shareImageUrl) {
+        URL.revokeObjectURL(shareImageUrl);
+    }
+});
 
 // Инициализация при загрузке
 window.addEventListener('load', () => {
