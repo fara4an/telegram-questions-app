@@ -1,14 +1,12 @@
 services:
-  # Веб-сервер (основное приложение)
   - type: web
     name: telegram-questions-app
     env: node
-    region: frankfurt  # или oregon/singapore
+    region: frankfurt
     plan: free
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
-    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
@@ -21,16 +19,13 @@ services:
           name: telegram-questions-db
           property: connectionString
 
-  # PostgreSQL база данных
   - type: postgres
     name: telegram-questions-db
     region: frankfurt
     plan: free
-    ipAllowList: []  # Разрешить доступ только изнутри Render
     databaseName: telegram_questions
     user: telegram_user
 
-  # Telegram бот (отдельный сервис)
   - type: worker
     name: telegram-bot
     env: node

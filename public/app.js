@@ -1,0 +1,416 @@
+// Telegram Web App
+let tg = window.Telegram?.WebApp;
+let userId = null;
+let username = null;
+let currentQuestionId = null;
+
+// ========== ИНИЦИАЛИЗАЦИЯ ==========
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🚀 Мини-апп запущен');
+    
+    if (tg) {
+        tg.ready();
+        tg.expand();
+        
+        const initData = tg.initDataUnsafe;
+        userId = initData.user?.id;
+        username = initData.user?.username || `user_${userId}`;
+        
+        console.log('Пользователь:', userId, username);
+    } else {
+        // Демо-режим
+        userId = '123456';
+        username = 'Демо пользователь';
+    }
+    
+    // Инициализация UI
+    initUI();
+    
+    // Загружаем данные
+    await loadAllData();
+    
+    // Автообновление каждые 30 секунд
+    setInterval(loadAllData, 30000);
+});
+
+// ========== ИНИЦИАЛИЗАЦИЯ UI ==========
+function initUI() {
+    // Обновляем информацию пользователя
+    document.getElementById('username').textContent = username;
+    document.getElementById('userId').textContent = `ID: ${userId}`;
+    document.getElementById('profileName').textContent = username;
+    document.getElementById('profileId').textContent = userId;
+    
+    // Генерируем ссылку для вопросов
+    const botUsername = 'ваш_бот_username'; // ЗАМЕНИТЕ!
+    const shareLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+    document.getElementById('shareLink').textContent = shareLink;
+    
+    // Настраиваем вкладки
+    setupTabs();
+}
+
+// ========== ЗАГРУЗКА ДАННЫХ ==========
+async function loadAllData() {
+    try {
+        await Promise.all([
+            loadIncomingQuestions(),
+            loadAnsweredQuestions(),
+            updateStats()
+        ]);
+        
+        updateStatus('🟢 Онлайн');
+    } catch (error) {
+        console.error('Ошибка загрузки:', error);
+        updateStatus('🔴 Ошибка подключения');
+    }
+}
+
+// Загрузить входящие вопросы
+async function loadIncomingQuestions() {
+    try {
+        const response = await fetch(`/api/questions/incoming/${userId}`);
+        const questions = await response.json();
+        
+        renderIncomingQuestions(questions);
+        updateBadge('incoming', questions.length);
+    } catch (error) {
+        console.error('Ошибка загрузки входящих:', error);
+        document.getElementById('incoming-list').innerHTML = `
+            <div class="empty-state">
+                <div class="icon">⚠️</div>
+                <p>Не удалось загрузить вопросы</p>
+                <button class="btn btn-secondary" onclick="loadIncomingQuestions()">
+                    Повторить
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Загрузить отвеченные вопросы
+async function loadAnsweredQuestions() {
+    try {
+        const response = await fetch(`/api/questions/answered/${userId}`);
+        const questions = await response.json();
+        
+        renderAnsweredQuestions(questions);
+        updateBadge('answered', questions.length);
+    } catch (error) {
+        console.error('Ошибка загрузки отвеченных:', error);
+        document.getElementById('answered-list').innerHTML = `
+            <div class="empty-state">
+                <div class="icon">⚠️</div>
+                <p>Не удалось загрузить ответы</p>
+                <button class="btn btn-secondary" onclick="loadAnsweredQuestions()">
+                    Повторить
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Обновить статистику
+async function updateStats() {
+    try {
+        const [incomingRes, answeredRes] = await Promise.all([
+            fetch(`/api/questions/incoming/${userId}`),
+            fetch(`/api/questions/answered/${userId}`)
+        ]);
+        
+        const incoming = await incomingRes.json();
+        const answered = await answeredRes.json();
+        
+        const total = incoming.length + answered.length;
+        
+        document.getElementById('statTotal').textContent = total;
+        document.getElementById('statAnswered').textContent = answered.length;
+        document.getElementById('statPending').textContent = incoming.length;
+    } catch (error) {
+        console.error('Ошибка статистики:', error);
+    }
+}
+
+// ========== РЕНДЕРИНГ ==========
+// Рендер входящих вопросов
+function renderIncomingQuestions(questions) {
+    const container = document.getElementById('incoming-list');
+    
+    if (!questions || questions.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <h3>Нет новых вопросов</h3>
+                <p>Поделитесь своей ссылкой, чтобы получать вопросы</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = questions.map(question => `
+        <div class="question-card" data-id="${question.id}">
+            <div class="question-meta">
+                <span>${formatDate(question.created_at)}</span>
+                <span>${question.from_username ? `От: ${question.from_username}` : 'Аноним'}</span>
+            </div>
+            <div class="question-text">${escapeHtml(question.text)}</div>
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="openAnswerModal(${question.id})">
+                    ✍️ Ответить
+                </button>
+                <button class="btn btn-danger" onclick="deleteQuestion(${question.id})">
+                    ❌ Удалить
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Рендер отвеченных вопросов
+function renderAnsweredQuestions(questions) {
+    const container = document.getElementById('answered-list');
+    
+    if (!questions || questions.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📤</div>
+                <h3>Нет отвеченных вопросов</h3>
+                <p>Ответьте на входящие вопросы</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = questions.map(question => `
+        <div class="question-card" data-id="${question.id}">
+            <div class="question-meta">
+                <span>${formatDate(question.created_at)}</span>
+                <span>Ответ: ${formatDate(question.answered_at)}</span>
+            </div>
+            <div class="question-text">${escapeHtml(question.text)}</div>
+            <div class="answer-bubble">
+                <strong>Ваш ответ:</strong><br>
+                ${escapeHtml(question.answer)}
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="shareAnswerAsImage(${question.id})">
+                    🖼️ Выложить ответ
+                </button>
+                <button class="btn btn-secondary" onclick="copyAnswerText(${question.id})">
+                    📋 Копировать текст
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ========== ОТВЕТ НА ВОПРОС ==========
+function openAnswerModal(questionId) {
+    currentQuestionId = questionId;
+    
+    // Находим вопрос
+    const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
+    const questionText = questionCard.querySelector('.question-text').textContent;
+    
+    // Показываем превью вопроса
+    document.getElementById('questionPreview').innerHTML = `
+        <div class="question-preview">
+            <strong>Вопрос:</strong>
+            <div class="preview-text">${questionText}</div>
+        </div>
+    `;
+    
+    // Открываем модалку
+    document.getElementById('answerModal').classList.add('active');
+    document.getElementById('answerText').focus();
+}
+
+function closeAnswerModal() {
+    document.getElementById('answerModal').classList.remove('active');
+    document.getElementById('answerText').value = '';
+    currentQuestionId = null;
+}
+
+async function submitAnswer() {
+    const answerText = document.getElementById('answerText').value.trim();
+    
+    if (!answerText) {
+        alert('Введите ответ');
+        return;
+    }
+    
+    if (!currentQuestionId) {
+        alert('Ошибка: вопрос не выбран');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/questions/${currentQuestionId}/answer`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                answer: answerText
+            })
+        });
+        
+        if (response.ok) {
+            alert('✅ Ответ сохранен!');
+            closeAnswerModal();
+            await loadAllData(); // Перезагружаем все данные
+        } else {
+            throw new Error('Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки ответа:', error);
+        alert('❌ Ошибка сохранения ответа');
+    }
+}
+
+// ========== ВЫЛОЖЕНИЕ ОТВЕТА ==========
+async function shareAnswerAsImage(questionId) {
+    try {
+        // Показываем загрузку
+        updateStatus('🖼️ Генерация картинки...');
+        
+        // Генерируем картинку
+        const response = await fetch(`/api/generate-image/${questionId}`);
+        
+        if (!response.ok) {
+            throw new Error('Ошибка генерации');
+        }
+        
+        // Получаем blob картинки
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        
+        // Если в Telegram - используем sharePhoto
+        if (tg) {
+            // Конвертируем blob в File
+            const file = new File([blob], 'answer.png', { type: 'image/png' });
+            
+            // Отправляем через sharePhoto
+            tg.sharePhoto(url, 'Мой ответ на анонимный вопрос');
+        } else {
+            // В браузере - открываем в новой вкладке
+            window.open(url, '_blank');
+        }
+        
+        updateStatus('✅ Картинка сгенерирована');
+        
+    } catch (error) {
+        console.error('Ошибка генерации картинки:', error);
+        alert('❌ Не удалось сгенерировать картинку');
+        updateStatus('🔴 Ошибка генерации');
+    }
+}
+
+function copyAnswerText(questionId) {
+    const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
+    const questionText = questionCard.querySelector('.question-text').textContent;
+    const answerText = questionCard.querySelector('.answer-bubble').textContent.replace('Ваш ответ:\n', '').trim();
+    
+    const fullText = `Вопрос: ${questionText}\n\nОтвет: ${answerText}`;
+    
+    navigator.clipboard.writeText(fullText).then(() => {
+        alert('✅ Текст скопирован!');
+    }).catch(() => {
+        alert('❌ Не удалось скопировать');
+    });
+}
+
+// ========== УДАЛЕНИЕ ВОПРОСА ==========
+async function deleteQuestion(questionId) {
+    if (!confirm('Удалить этот вопрос?')) return;
+    
+    // В реальном проекте здесь должен быть DELETE запрос
+    // Для демо просто удаляем из DOM
+    const questionCard = document.querySelector(`.question-card[data-id="${questionId}"]`);
+    if (questionCard) {
+        questionCard.remove();
+        await updateStats();
+        alert('❌ Вопрос удалён');
+    }
+}
+
+// ========== ПРОФИЛЬ ==========
+function copyShareLink() {
+    const link = document.getElementById('shareLink').textContent;
+    
+    navigator.clipboard.writeText(link).then(() => {
+        alert('✅ Ссылка скопирована!');
+    }).catch(() => {
+        alert('❌ Не удалось скопировать');
+    });
+}
+
+function shareToTelegram() {
+    const link = document.getElementById('shareLink').textContent;
+    
+    if (tg) {
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`);
+    } else {
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=Задай%20мне%20анонимный%20вопрос!`, '_blank');
+    }
+}
+
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+function setupTabs() {
+    // Переключение вкладок
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+            
+            // Обновляем активные вкладки
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            
+            this.classList.add('active');
+            document.getElementById(`content-${tabId}`).classList.add('active');
+        });
+    });
+}
+
+function updateBadge(type, count) {
+    const badge = document.getElementById(`${type}Badge`);
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+function updateStatus(status) {
+    document.getElementById('statusText').textContent = status;
+}
+
+function formatDate(dateString) {
+    try {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return 'только что';
+        if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
+        if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч назад`;
+        
+        return date.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch {
+        return 'недавно';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
