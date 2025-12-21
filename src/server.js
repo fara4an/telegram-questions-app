@@ -26,8 +26,6 @@ async function initDB() {
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
                 username VARCHAR(255),
-                first_name VARCHAR(255),
-                last_name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
@@ -137,8 +135,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/user/:userId', async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT telegram_id, username, first_name, last_name 
-             FROM users WHERE telegram_id = $1`,
+            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
             [req.params.userId]
         );
         
@@ -147,8 +144,7 @@ app.get('/api/user/:userId', async (req, res) => {
         } else {
             res.json({
                 telegram_id: req.params.userId,
-                username: null,
-                first_name: null
+                username: null
             });
         }
     } catch (error) {
@@ -744,11 +740,11 @@ bot.start(async (ctx) => {
     // Сохраняем пользователя в БД
     try {
         await db.query(
-            `INSERT INTO users (telegram_id, username, first_name) 
-             VALUES ($1, $2, $3) 
+            `INSERT INTO users (telegram_id, username) 
+             VALUES ($1, $2) 
              ON CONFLICT (telegram_id) 
-             DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
-            [userId, username, ctx.from.first_name || null]
+             DO UPDATE SET username = EXCLUDED.username`,
+            [userId, username]
         );
     } catch (error) {
         console.error('Ошибка сохранения пользователя:', error);
