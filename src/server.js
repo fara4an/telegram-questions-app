@@ -33,7 +33,6 @@ async function initDB() {
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
                 username VARCHAR(255),
-                first_name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
@@ -68,59 +67,7 @@ async function initDB() {
         console.log('✅ Таблицы созданы/обновлены');
         
     } catch (error) {
-        console.error('❌ Ошибка БД:', error);
-        // Пробуем альтернативный способ - добавляем колонки если таблицы уже есть
-        try {
-            await addMissingColumns();
-        } catch (addError) {
-            console.error('❌ Ошибка добавления колонок:', addError);
-        }
-    }
-}
-
-// Функция для добавления отсутствующих колонок
-async function addMissingColumns() {
-    try {
-        // Проверяем и добавляем first_name в users
-        await db.query(`
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name = 'users' AND column_name = 'first_name') THEN
-                    ALTER TABLE users ADD COLUMN first_name VARCHAR(255);
-                END IF;
-            END $$;
-        `);
-        
-        // Проверяем и добавляем image_base64 в question_images
-        await db.query(`
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name = 'question_images' AND column_name = 'image_base64') THEN
-                    -- Если таблица существует без колонки
-                    IF EXISTS (SELECT 1 FROM information_schema.tables 
-                              WHERE table_name = 'question_images') THEN
-                        ALTER TABLE question_images ADD COLUMN image_base64 TEXT;
-                    END IF;
-                END IF;
-            END $$;
-        `);
-        
-        // Создаем таблицу question_images если она не существует
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS question_images (
-                id SERIAL PRIMARY KEY,
-                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                image_base64 TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(question_id)
-            );
-        `);
-        
-        console.log('✅ Отсутствующие колонки добавлены');
-    } catch (error) {
-        throw error;
+        console.error('❌ Ошибка БД:', error.message);
     }
 }
 
@@ -204,17 +151,13 @@ async function sendAnswerNotification(questionId) {
         // Если вопрос был задан не анонимно (есть from_user_id)
         if (question.from_telegram_id && question.from_user_id) {
             const fromUserId = question.from_telegram_id;
-            const answerText = question.answer.length > 100 ? 
-                question.answer.substring(0, 100) + '...' : question.answer;
+            const questionText = question.text.length > 80 ? 
+                question.text.substring(0, 80) + '...' : question.text;
             
-            // Формируем текст уведомления
+            // Формируем текст уведомления (НЕ показываем ответ!)
             const messageText = `💬 *На твой вопрос ответили!*\n\n` +
-                              `📌 *Твой вопрос:*\n"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"\n\n` +
-                              `💡 *Ответ:*\n"${answerText}"\n\n` +
-                              `👇 *Хочешь задать еще вопросы?*`;
-            
-            // Ссылка на приложение получателя
-            const toUserLink = `https://t.me/${bot.botInfo.username}?start=ask_${question.to_user_id}`;
+                              `📌 *Твой вопрос:*\n"${questionText}"\n\n` +
+                              `👇 *Загляни в приложение, чтобы увидеть ответ!*`;
             
             try {
                 await bot.telegram.sendMessage(fromUserId, messageText, {
@@ -222,8 +165,8 @@ async function sendAnswerNotification(questionId) {
                     reply_markup: {
                         inline_keyboard: [[
                             {
-                                text: '✍️ Задать еще вопрос',
-                                url: toUserLink
+                                text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                                web_app: { url: WEB_APP_URL }
                             }
                         ]]
                     }
@@ -405,128 +348,140 @@ app.post('/api/share-to-chat', async (req, res) => {
     }
 });
 
-// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ ==========
+// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ (ИСПРАВЛЕННАЯ) ==========
 async function generateBeautifulImage(question) {
     try {
-        const width = 1080;
-        const height = 1350;
+        const width = 1200;
+        const height = 1600;
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
         
-        // 1. Фон - сплошной цвет (проще чем градиент)
-        ctx.fillStyle = '#0f172a';
+        // 1. Фон - сплошной темный цвет
+        ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, width, height);
         
-        // 2. Заголовок
+        // 2. Добавляем градиент сверху
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        gradient.addColorStop(0, '#2e8de6');
+        gradient.addColorStop(1, '#6c5ce7');
+        
+        // 3. Верхняя плашка с заголовком
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, 300);
+        
+        // 4. Заголовок
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 60px "Arial"';
+        ctx.font = 'bold 70px "Arial"';
         ctx.textAlign = 'center';
         ctx.fillText('💬', width / 2, 120);
         
-        ctx.font = 'bold 48px "Arial"';
-        ctx.fillText('Ответ на вопрос', width / 2, 200);
+        ctx.font = 'bold 50px "Arial"';
+        ctx.fillText('Ответ на вопрос', width / 2, 220);
         
-        // 3. Разделитель
-        ctx.strokeStyle = 'rgba(46, 141, 230, 0.5)';
-        ctx.lineWidth = 3;
+        // 5. Карточка вопроса
+        const cardWidth = width * 0.85;
+        const cardHeight = 350;
+        const cardX = (width - cardWidth) / 2;
+        const cardY = 350;
+        
+        // Скругленные углы (простая реализация)
+        ctx.fillStyle = '#1a1a1a';
         ctx.beginPath();
-        ctx.moveTo(width * 0.2, 250);
-        ctx.lineTo(width * 0.8, 250);
+        ctx.roundRect = function(x, y, w, h, r) {
+            if (w < 2 * r) r = w / 2;
+            if (h < 2 * r) r = h / 2;
+            this.beginPath();
+            this.moveTo(x + r, y);
+            this.arcTo(x + w, y, x + w, y + h, r);
+            this.arcTo(x + w, y + h, x, y + h, r);
+            this.arcTo(x, y + h, x, y, r);
+            this.arcTo(x, y, x + w, y, r);
+            this.closePath();
+            return this;
+        };
+        
+        ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 30);
+        ctx.fill();
+        
+        // Граница карточки
+        ctx.strokeStyle = '#2e8de6';
+        ctx.lineWidth = 3;
         ctx.stroke();
         
-        // 4. Карточка вопроса
-        const cardWidth = width * 0.8;
-        const cardHeight = 400;
-        const cardX = (width - cardWidth) / 2;
-        const cardY = 300;
-        
-        // Простая карточка с закругленными углами
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
-        ctx.beginPath();
-        ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 20);
-        ctx.fill();
-        
-        // 5. Текст вопроса
-        ctx.fillStyle = '#93c5fd';
-        ctx.font = 'bold 32px "Arial"';
-        ctx.textAlign = 'left';
-        ctx.fillText('Вопрос:', cardX + 40, cardY + 60);
-        
-        ctx.fillStyle = '#e2e8f0';
-        ctx.font = '28px "Arial"';
-        wrapText(ctx, `"${question.text}"`, cardX + 40, cardY + 110, cardWidth - 80, 40, 4);
-        
-        // 6. Карточка ответа
-        const answerCardY = cardY + cardHeight + 30;
-        
-        ctx.fillStyle = 'rgba(21, 128, 61, 0.8)';
-        ctx.beginPath();
-        ctx.roundRect(cardX, answerCardY, cardWidth, cardHeight, 20);
-        ctx.fill();
-        
-        // 7. Текст ответа
-        ctx.fillStyle = '#86efac';
-        ctx.font = 'bold 32px "Arial"';
-        ctx.textAlign = 'left';
-        ctx.fillText('Мой ответ:', cardX + 40, answerCardY + 60);
-        
-        ctx.fillStyle = '#f0fdf4';
-        ctx.font = '28px "Arial"';
-        wrapText(ctx, `"${question.answer}"`, cardX + 40, answerCardY + 110, cardWidth - 80, 40, 4);
-        
-        // 8. Призыв к действию
-        const ctaY = answerCardY + cardHeight + 60;
-        
-        ctx.fillStyle = '#fbbf24';
+        // 6. Текст вопроса
+        ctx.fillStyle = '#2e8de6';
         ctx.font = 'bold 36px "Arial"';
+        ctx.textAlign = 'left';
+        ctx.fillText('❓ ВОПРОС:', cardX + 40, cardY + 70);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '28px "Arial"';
+        wrapText(ctx, `"${question.text}"`, cardX + 40, cardY + 130, cardWidth - 80, 35, 4);
+        
+        // 7. Карточка ответа
+        const answerCardY = cardY + cardHeight + 40;
+        
+        ctx.fillStyle = '#1a1a1a';
+        ctx.roundRect(cardX, answerCardY, cardWidth, cardHeight, 30);
+        ctx.fill();
+        
+        // Граница карточки ответа
+        ctx.strokeStyle = '#4CAF50';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // 8. Текст ответа
+        ctx.fillStyle = '#4CAF50';
+        ctx.font = 'bold 36px "Arial"';
+        ctx.textAlign = 'left';
+        ctx.fillText('💡 ОТВЕТ:', cardX + 40, answerCardY + 70);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '28px "Arial"';
+        wrapText(ctx, `"${question.answer}"`, cardX + 40, answerCardY + 130, cardWidth - 80, 35, 4);
+        
+        // 9. Призыв к действию (нижняя часть)
+        const ctaY = answerCardY + cardHeight + 80;
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 40px "Arial"';
         ctx.textAlign = 'center';
         ctx.fillText('👇 Задай и мне вопрос!', width / 2, ctaY);
         
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '24px "Arial"';
-        ctx.fillText('t.me/dota2servicebot', width / 2, ctaY + 50);
+        // 10. Ссылка на бота
+        ctx.fillStyle = '#2e8de6';
+        ctx.font = 'bold 36px "Arial"';
+        ctx.fillText('t.me/dota2servicebot', width / 2, ctaY + 70);
         
-        // 9. Водяной знак
+        // 11. Водяной знак
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.font = '20px "Arial"';
-        ctx.fillText('Telegram Questions', width / 2, height - 40);
+        ctx.font = '24px "Arial"';
+        ctx.fillText('Telegram Questions App', width / 2, height - 50);
         
         return canvas.toBuffer('image/png');
     } catch (error) {
         console.error('❌ Ошибка генерации изображения:', error.message);
-        throw error;
+        // Создаем простую картинку-заглушку
+        const canvas = createCanvas(800, 600);
+        const ctx = canvas.getContext('2d');
+        
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, 800, 600);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬 Ответ на анонимный вопрос', 400, 200);
+        
+        ctx.font = '24px Arial';
+        ctx.fillText('Задай мне вопрос:', 400, 300);
+        
+        ctx.fillStyle = '#2e8de6';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText('t.me/dota2servicebot', 400, 400);
+        
+        return canvas.toBuffer('image/png');
     }
-}
-
-// Добавляем метод roundRect в контекст
-if (typeof CanvasRenderingContext2D !== 'undefined') {
-    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-        if (w < 2 * r) r = w / 2;
-        if (h < 2 * r) r = h / 2;
-        this.beginPath();
-        this.moveTo(x + r, y);
-        this.arcTo(x + w, y, x + w, y + h, r);
-        this.arcTo(x + w, y + h, x, y + h, r);
-        this.arcTo(x, y + h, x, y, r);
-        this.arcTo(x, y, x + w, y, r);
-        this.closePath();
-        return this;
-    };
-} else {
-    // Для Node.js canvas
-    const Canvas = require('canvas');
-    Canvas.CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-        if (w < 2 * r) r = w / 2;
-        if (h < 2 * r) r = h / 2;
-        this.beginPath();
-        this.moveTo(x + r, y);
-        this.arcTo(x + w, y, x + w, y + h, r);
-        this.arcTo(x + w, y + h, x, y + h, r);
-        this.arcTo(x, y + h, x, y, r);
-        this.arcTo(x, y, x + w, y, r);
-        this.closePath();
-        return this;
-    };
 }
 
 // Функция для переноса текста
