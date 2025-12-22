@@ -18,6 +18,11 @@ services:
         fromDatabase:
           name: telegram-questions-db
           property: connectionString
+    # Добавить для uploads
+    disk:
+      name: uploads-storage
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
 
 databases:
   - name: telegram-questions-db

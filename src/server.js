@@ -5,6 +5,7 @@ const path = require('path');
 const { Client } = require('pg');
 const cors = require('cors');
 const { createCanvas } = require('canvas');
+const crypto = require('crypto');
 
 const app = express();
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -40,9 +41,19 @@ async function initDB() {
                 answered_at TIMESTAMP
             );
             
+            CREATE TABLE IF NOT EXISTS question_images (
+                id SERIAL PRIMARY KEY,
+                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                image_filename VARCHAR(255) UNIQUE NOT NULL,
+                image_url TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(question_id)
+            );
+            
             CREATE INDEX IF NOT EXISTS idx_questions_to_user ON questions(to_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_from_user ON questions(from_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(is_answered);
+            CREATE INDEX IF NOT EXISTS idx_question_images_question ON question_images(question_id);
         `);
     } catch (error) {
         console.error('❌ Ошибка БД:', error);
@@ -50,89 +61,37 @@ async function initDB() {
     }
 }
 
-// ========== УВЕДОМЛЕНИЯ ==========
-async function notifyNewQuestion(toUserId, questionId) {
-    try {
-        const questionResult = await db.query(
-            `SELECT q.* FROM questions q WHERE q.id = $1`,
-            [questionId]
-        );
-        
-        if (questionResult.rows.length === 0) return;
-        
-        const question = questionResult.rows[0];
-        
-        const userLink = `https://t.me/${bot.botInfo.username}?start=app`;
-        
-        await bot.telegram.sendMessage(
-            toUserId,
-            `📨 *Новый анонимный вопрос!*\n\n` +
-            `🔒 *От: Аноним*\n\n` +
-            `📝 *Вопрос:*\n${question.text.substring(0, 200)}${question.text.length > 200 ? '...' : ''}\n\n` +
-            `👉 *Открой приложение, чтобы ответить:*`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                        {
-                            text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
-                            web_app: { url: WEB_APP_URL }
-                        }
-                    ]]
-                }
-            }
-        );
-        
-        console.log(`✅ Уведомление отправлено пользователю ${toUserId}`);
-    } catch (error) {
-        console.error('❌ Ошибка отправки уведомления:', error.message);
-    }
-}
-
-async function notifyNewAnswer(fromUserId, questionText) {
-    try {
-        if (fromUserId) {
-            await bot.telegram.sendMessage(
-                fromUserId,
-                `✅ *На ваш вопрос ответили!*\n\n` +
-                `📝 *Ваш вопрос:*\n${questionText.substring(0, 150)}${questionText.length > 150 ? '...' : ''}\n\n` +
-                `👉 *Открой приложение, чтобы увидеть ответ:*`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            {
-                                text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
-                                web_app: { url: WEB_APP_URL }
-                            }
-                        ]]
-                    }
-                }
-            );
-        }
-    } catch (error) {
-        console.error('❌ Ошибка отправки уведомления об ответе:', error.message);
-    }
-}
-
-// ========== MIDDLEWARE ==========
+// ========== МИДЛВАРЫ ==========
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// ========== API ROUTES ==========
-
-// В server.js в разделе API ROUTES добавим:
-// ========== ШЕРИНГ ЧЕРЕЗ БОТА ==========
-app.post('/api/share-via-bot', async (req, res) => {
+// ========== ПОЛУЧИТЬ ИЛИ СОЗДАТЬ КАРТИНКУ ДЛЯ ШЕРИНГА ==========
+app.get('/api/share-image/:questionId', async (req, res) => {
     try {
-        const { userId, questionId, chatId, type } = req.body; // type: 'story' или 'chat'
+        const questionId = req.params.questionId;
         
-        if (!userId || !questionId) {
-            return res.status(400).json({ error: 'Не указаны параметры' });
+        // 1. Проверяем, есть ли уже картинка в БД
+        const existingImage = await db.query(
+            `SELECT qi.image_url, qi.image_filename 
+             FROM question_images qi 
+             WHERE qi.question_id = $1`,
+            [questionId]
+        );
+        
+        // 2. Если есть — возвращаем её
+        if (existingImage.rows.length > 0) {
+            console.log(`✅ Картинка из кэша для вопроса ${questionId}`);
+            return res.json({
+                success: true,
+                imageUrl: existingImage.rows[0].image_url,
+                filename: existingImage.rows[0].image_filename,
+                cached: true
+            });
         }
         
-        // Получаем данные вопроса
+        // 3. Если нет — получаем вопрос и генерируем картинку
         const questionResult = await db.query(
             `SELECT q.*, u.username as from_username 
              FROM questions q
@@ -146,440 +105,98 @@ app.post('/api/share-via-bot', async (req, res) => {
         }
         
         const question = questionResult.rows[0];
-        const userLink = `https://t.me/${bot.botInfo.username}?start=ask_${userId}`;
         
-        let message = '';
-        if (type === 'story') {
-            // Для истории
-            message = `💬 Ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n${question.answer ? `💡 Ответ: "${question.answer.substring(0, 80)}..."` : 'Посмотри ответ в приложении!'}\n\n👇 Задай и мне вопрос!`;
-        } else {
-            // Для чата
-            message = `💬 *Ответ на анонимный вопрос!*\n\n` +
-                     `📝 *Вопрос:* ${question.text.substring(0, 150)}${question.text.length > 150 ? '...' : ''}\n\n` +
-                     `💡 *Ответ:* ${question.answer ? question.answer.substring(0, 150) + (question.answer.length > 150 ? '...' : '') : 'Смотри в приложении'}\n\n` +
-                     `👇 *Задай и мне вопрос:*\n${userLink}`;
-        }
-        
-        // Отправляем сообщение через бота
-        await bot.telegram.sendMessage(
-            chatId || userId, // Если нет chatId, шлём самому пользователю
-            message,
-            {
-                parse_mode: type === 'story' ? null : 'Markdown',
-                reply_markup: type === 'story' ? undefined : {
-                    inline_keyboard: [[
-                        {
-                            text: '✍️ Задать вопрос',
-                            url: userLink
-                        }
-                    ]]
-                }
-            }
-        );
-        
-        res.json({ 
-            success: true, 
-            message: 'Отправлено через бота',
-            type: type 
-        });
-        
-    } catch (error) {
-        console.error('Error sharing via bot:', error);
-        res.status(500).json({ error: 'Sharing failed' });
-    }
-});
-
-// Health check
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        service: 'Telegram Questions API'
-    });
-});
-
-// 1. Получить информацию о пользователе
-app.get('/api/user/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
-            [req.params.userId]
-        );
-        
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]);
-        } else {
-            res.json({
-                telegram_id: req.params.userId,
-                username: null
-            });
-        }
-    } catch (error) {
-        console.error('Error fetching user:', error);
-        res.json({
-            telegram_id: req.params.userId,
-            username: null
-        });
-    }
-});
-
-// 2. Получить ВСЕ вопросы пользователя (для совместимости)
-app.get('/api/questions/:userId', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        
-        const result = await db.query(
-            `SELECT q.*, 
-                    u1.username as from_username,
-                    u2.username as to_username
-             FROM questions q
-             LEFT JOIN users u1 ON q.from_user_id = u1.telegram_id
-             LEFT JOIN users u2 ON q.to_user_id = u2.telegram_id
-             WHERE q.to_user_id = $1 OR q.from_user_id = $1
-             ORDER BY q.created_at DESC`,
-            [userId]
-        );
-        
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching all questions:', error);
-        // Тестовые данные для демо
-        res.json([
-            {
-                id: 1,
-                text: "Какой твой любимый фильм?",
-                answer: null,
-                is_answered: false,
-                created_at: new Date().toISOString(),
-                from_username: 'Аноним',
-                to_user_id: req.params.userId
-            },
-            {
-                id: 2,
-                text: "Что тебе нравится в программировании?",
-                answer: "Возможность создавать что-то новое!",
-                is_answered: true,
-                created_at: new Date(Date.now() - 86400000).toISOString(),
-                answered_at: new Date().toISOString(),
-                from_username: 'Аноним',
-                to_user_id: req.params.userId
-            }
-        ]);
-    }
-});
-
-// 3. Получить ВХОДЯЩИЕ вопросы (которые другие написали мне)
-app.get('/api/questions/incoming/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.to_user_id = $1 
-             ORDER BY q.created_at DESC`,
-            [req.params.userId]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching incoming questions:', error);
-        // Тестовые данные для демо
-        res.json([
-            {
-                id: 1,
-                text: "Какой твой любимый герой в Dota 2?",
-                answer: null,
-                is_answered: false,
-                created_at: new Date().toISOString(),
-                from_username: 'Аноним'
-            },
-            {
-                id: 2,
-                text: "Что тебе нравится в программировании?",
-                answer: "Возможность создавать что-то новое и полезное!",
-                is_answered: true,
-                created_at: new Date(Date.now() - 86400000).toISOString(),
-                answered_at: new Date(Date.now() - 43200000).toISOString(),
-                from_username: 'Аноним'
-            }
-        ]);
-    }
-});
-
-// 4. Получить ОТПРАВЛЕННЫЕ вопросы (которые я написал другим)
-app.get('/api/questions/sent/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT q.*, u.username as to_username 
-             FROM questions q
-             LEFT JOIN users u ON q.to_user_id = u.telegram_id
-             WHERE q.from_user_id = $1 
-             ORDER BY q.created_at DESC`,
-            [req.params.userId]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching sent questions:', error);
-        // Тестовые данные для демо
-        res.json([
-            {
-                id: 3,
-                text: "Как дела?",
-                answer: "Всё отлично, спасибо!",
-                is_answered: true,
-                created_at: new Date(Date.now() - 345600000).toISOString(),
-                to_user_id: 987654,
-                to_username: 'friend_user'
-            }
-        ]);
-    }
-});
-
-// 5. Получить ОТВЕЧЕННЫЕ вопросы
-app.get('/api/questions/answered/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.to_user_id = $1 AND q.is_answered = TRUE
-             ORDER BY q.answered_at DESC`,
-            [req.params.userId]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching answered questions:', error);
-        res.json([]);
-    }
-});
-
-// 6. Получить конкретный вопрос по ID
-app.get('/api/question/:id', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.id = $1`,
-            [req.params.id]
-        );
-        
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]);
-        } else {
-            res.status(404).json({ error: 'Вопрос не найден' });
-        }
-    } catch (error) {
-        console.error('Error fetching question:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// 7. Отправить новый вопрос
-app.post('/api/questions', async (req, res) => {
-    try {
-        const { from_user_id, to_user_id, text } = req.body;
-        
-        if (!to_user_id || !text) {
-            return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
-        }
-        
-        // Проверяем, существует ли получатель
-        const userResult = await db.query(
-            `SELECT telegram_id FROM users WHERE telegram_id = $1`,
-            [to_user_id]
-        );
-        
-        // Если пользователя нет, создаем его
-        if (userResult.rows.length === 0) {
-            await db.query(
-                `INSERT INTO users (telegram_id) VALUES ($1)`,
-                [to_user_id]
-            );
-        }
-        
-        // Сохраняем отправителя, если он указан
-        if (from_user_id && from_user_id !== 'null') {
-            await db.query(
-                `INSERT INTO users (telegram_id) VALUES ($1) 
-                 ON CONFLICT (telegram_id) DO NOTHING`,
-                [from_user_id]
-            );
-        }
-        
-        // Сохраняем вопрос
-        const result = await db.query(
-            `INSERT INTO questions (from_user_id, to_user_id, text) 
-             VALUES ($1, $2, $3) RETURNING *`,
-            [from_user_id && from_user_id !== 'null' ? from_user_id : null, to_user_id, text]
-        );
-        
-        const question = result.rows[0];
-        
-        // Отправляем уведомление получателю
-        await notifyNewQuestion(to_user_id, question.id);
-        
-        res.status(201).json({ 
-            success: true, 
-            question: question 
-        });
-        
-    } catch (error) {
-        console.error('Error creating question:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// 8. Ответить на вопрос
-app.post('/api/questions/:id/answer', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { answer } = req.body;
-        
-        if (!answer) {
-            return res.status(400).json({ error: 'Не указан ответ' });
-        }
-        
-        // Получаем вопрос для уведомления
-        const questionResult = await db.query(
-            `SELECT * FROM questions WHERE id = $1`,
-            [id]
-        );
-        
-        if (questionResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Вопрос не найден' });
-        }
-        
-        const question = questionResult.rows[0];
-        
-        // Обновляем вопрос с ответом
-        const result = await db.query(
-            `UPDATE questions 
-             SET answer = $1, is_answered = TRUE, answered_at = CURRENT_TIMESTAMP 
-             WHERE id = $2 RETURNING *`,
-            [answer, id]
-        );
-        
-        // Отправляем уведомление спрашивающему
-        if (question.from_user_id) {
-            await notifyNewAnswer(question.from_user_id, question.text);
-        }
-        
-        res.json({ 
-            success: true, 
-            question: result.rows[0] 
-        });
-        
-    } catch (error) {
-        console.error('Error answering question:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// 9. Удалить вопрос
-app.delete('/api/questions/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        const result = await db.query(
-            `DELETE FROM questions WHERE id = $1 RETURNING *`,
-            [id]
-        );
-        
-        if (result.rowCount > 0) {
-            res.json({ success: true, message: 'Вопрос удален' });
-        } else {
-            res.status(404).json({ error: 'Вопрос не найден' });
-        }
-        
-    } catch (error) {
-        console.error('Error deleting question:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// 10. Генерация картинки с вопросом и ответом
-app.get('/api/generate-image/:questionId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT q.*, 
-                    u1.username as to_username,
-                    u2.username as from_username
-             FROM questions q
-             LEFT JOIN users u1 ON q.to_user_id = u1.telegram_id
-             LEFT JOIN users u2 ON q.from_user_id = u2.telegram_id
-             WHERE q.id = $1`,
-            [req.params.questionId]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Question not found' });
-        }
-        
-        const question = result.rows[0];
+        // 4. Генерируем картинку
         const imageBuffer = await generateChatImage(question);
         
-        res.set('Content-Type', 'image/png');
-        res.send(imageBuffer);
+        // 5. Сохраняем картинку локально и в БД
+        const filename = `question_${questionId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.png`;
+        const filePath = path.join(__dirname, '../uploads', filename);
+        const imageUrl = `${WEB_APP_URL}/uploads/${filename}`;
+        
+        // Создаем папку uploads если её нет
+        const fs = require('fs');
+        const uploadsDir = path.join(__dirname, '../uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        // Сохраняем файл
+        fs.writeFileSync(filePath, imageBuffer);
+        console.log(`💾 Картинка сохранена: ${filePath}`);
+        
+        // 6. Сохраняем в БД
+        await db.query(
+            `INSERT INTO question_images (question_id, image_filename, image_url) 
+             VALUES ($1, $2, $3) 
+             ON CONFLICT (question_id) 
+             DO UPDATE SET image_filename = EXCLUDED.image_filename, image_url = EXCLUDED.image_url`,
+            [questionId, filename, imageUrl]
+        );
+        
+        console.log(`✅ Картинка сохранена в БД для вопроса ${questionId}`);
+        
+        // 7. Возвращаем результат
+        res.json({
+            success: true,
+            imageUrl: imageUrl,
+            filename: filename,
+            cached: false
+        });
         
     } catch (error) {
-        console.error('Error generating image:', error);
-        res.status(500).json({ error: 'Image generation failed' });
+        console.error('❌ Ошибка генерации картинки:', error);
+        res.status(500).json({ error: 'Failed to generate image' });
     }
 });
 
-// 11. Получить статистику пользователя
-app.get('/api/stats/:userId', async (req, res) => {
+// ========== УДАЛЕНИЕ КАРТИНКИ ==========
+app.delete('/api/share-image/:questionId', async (req, res) => {
     try {
-        const [incomingRes, sentRes, answeredRes] = await Promise.all([
-            db.query(
-                `SELECT COUNT(*) as count FROM questions WHERE to_user_id = $1`,
-                [req.params.userId]
-            ),
-            db.query(
-                `SELECT COUNT(*) as count FROM questions WHERE from_user_id = $1`,
-                [req.params.userId]
-            ),
-            db.query(
-                `SELECT COUNT(*) as count FROM questions 
-                 WHERE (to_user_id = $1 OR from_user_id = $1) AND is_answered = TRUE`,
-                [req.params.userId]
-            )
-        ]);
+        const questionId = req.params.questionId;
         
-        const total = parseInt(incomingRes.rows[0].count) + parseInt(sentRes.rows[0].count);
-        const received = parseInt(incomingRes.rows[0].count);
-        const sent = parseInt(sentRes.rows[0].count);
-        const answered = parseInt(answeredRes.rows[0].count);
+        // 1. Получаем информацию о файле
+        const imageResult = await db.query(
+            `SELECT image_filename FROM question_images WHERE question_id = $1`,
+            [questionId]
+        );
         
-        res.json({
-            total,
-            received,
-            sent,
-            answered
-        });
+        if (imageResult.rows.length > 0) {
+            const filename = imageResult.rows[0].image_filename;
+            const filePath = path.join(__dirname, '../uploads', filename);
+            
+            // 2. Удаляем файл
+            const fs = require('fs');
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`🗑️ Файл удален: ${filePath}`);
+            }
+            
+            // 3. Удаляем запись из БД
+            await db.query(
+                `DELETE FROM question_images WHERE question_id = $1`,
+                [questionId]
+            );
+        }
+        
+        res.json({ success: true, message: 'Image deleted' });
         
     } catch (error) {
-        console.error('Error fetching stats:', error);
-        res.json({
-            total: 2,
-            received: 2,
-            sent: 1,
-            answered: 1
-        });
+        console.error('❌ Ошибка удаления картинки:', error);
+        res.status(500).json({ error: 'Failed to delete image' });
     }
 });
 
-// ========== ГЕНЕРАЦИЯ КАРТИНКИ ==========
+// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ ==========
 async function generateChatImage(question) {
     try {
-        const { createCanvas } = require('canvas');
-        const width = 1080; // Размер для Stories
+        const width = 1080;
         const height = 1920;
         
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
         
-        // Красивый градиентный фон
+        // Градиентный фон
         const gradient = ctx.createLinearGradient(0, 0, width, height);
         gradient.addColorStop(0, '#1a1a2e');
         gradient.addColorStop(0.5, '#16213e');
@@ -661,8 +278,6 @@ async function generateChatImage(question) {
         
     } catch (error) {
         console.error('Error in generateChatImage:', error);
-        // Простая картинка с ошибкой
-        const { createCanvas } = require('canvas');
         const canvas = createCanvas(800, 400);
         const ctx = canvas.getContext('2d');
         
@@ -702,48 +317,274 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     ctx.fillText(line, x, y);
 }
 
-function splitText(text, maxLength) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-    
-    for (const word of words) {
-        if ((currentLine + ' ' + word).length > maxLength) {
-            if (currentLine) lines.push(currentLine);
-            currentLine = word;
-        } else {
-            currentLine = currentLine ? currentLine + ' ' + word : word;
+// ========== ШЕРИНГ ЧЕРЕЗ TELEGRAM ==========
+app.post('/api/share-via-telegram', async (req, res) => {
+    try {
+        const { userId, questionId, type = 'chat' } = req.body;
+        
+        // 1. Получаем или создаем картинку
+        const imageResponse = await fetch(`${WEB_APP_URL}/api/share-image/${questionId}`);
+        const imageData = await imageResponse.json();
+        
+        if (!imageData.success) {
+            throw new Error('Не удалось получить картинку');
         }
+        
+        // 2. Формируем ссылку для шеринга
+        const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
+        const shareText = `💬 Ответил на анонимный вопрос!\n\nЗадай и мне вопрос: ${userLink}`;
+        
+        // 3. Формируем данные для ответа
+        res.json({
+            success: true,
+            shareData: {
+                imageUrl: imageData.imageUrl,
+                shareText: shareText,
+                userLink: userLink,
+                type: type
+            },
+            message: 'Данные для шеринга готовы'
+        });
+        
+    } catch (error) {
+        console.error('❌ Ошибка подготовки шеринга:', error);
+        res.status(500).json({ error: 'Failed to prepare sharing' });
     }
-    
-    if (currentLine) {
-        lines.push(currentLine);
-    }
-    
-    return lines;
-}
+});
 
-function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
-    if (typeof radius === 'number') {
-        radius = {tl: radius, tr: radius, br: radius, bl: radius};
+// ========== ОСТАЛЬНЫЕ API (оставляем без изменений) ==========
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'Telegram Questions API',
+        uploads: '/uploads доступен'
+    });
+});
+
+// 1. Получить информацию о пользователе
+app.get('/api/user/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
+            [req.params.userId]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.json({
+                telegram_id: req.params.userId,
+                username: null
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        res.json({
+            telegram_id: req.params.userId,
+            username: null
+        });
     }
-    
-    ctx.beginPath();
-    ctx.moveTo(x + radius.tl, y);
-    ctx.lineTo(x + width - radius.tr, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
-    ctx.lineTo(x + width, y + height - radius.br);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
-    ctx.lineTo(x + radius.bl, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
-    ctx.lineTo(x, y + radius.tl);
-    ctx.quadraticCurveTo(x, y, x + radius.tl, y);
-    ctx.closePath();
-    
-    if (fill) ctx.fill();
-    if (stroke) ctx.stroke();
-}
+});
+
+// 2. Получить ВХОДЯЩИЕ вопросы
+app.get('/api/questions/incoming/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT q.*, u.username as from_username 
+             FROM questions q
+             LEFT JOIN users u ON q.from_user_id = u.telegram_id
+             WHERE q.to_user_id = $1 
+             ORDER BY q.created_at DESC`,
+            [req.params.userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching incoming questions:', error);
+        res.json([
+            {
+                id: 1,
+                text: "Какой твой любимый герой в Dota 2?",
+                answer: null,
+                is_answered: false,
+                created_at: new Date().toISOString(),
+                from_username: 'Аноним'
+            }
+        ]);
+    }
+});
+
+// 3. Получить ОТПРАВЛЕННЫЕ вопросы
+app.get('/api/questions/sent/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT q.*, u.username as to_username 
+             FROM questions q
+             LEFT JOIN users u ON q.to_user_id = u.telegram_id
+             WHERE q.from_user_id = $1 
+             ORDER BY q.created_at DESC`,
+            [req.params.userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching sent questions:', error);
+        res.json([
+            {
+                id: 3,
+                text: "Как дела?",
+                answer: "Всё отлично, спасибо!",
+                is_answered: true,
+                created_at: new Date(Date.now() - 345600000).toISOString(),
+                to_user_id: 987654,
+                to_username: 'friend_user'
+            }
+        ]);
+    }
+});
+
+// 4. Получить конкретный вопрос по ID
+app.get('/api/question/:id', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT q.*, u.username as from_username 
+             FROM questions q
+             LEFT JOIN users u ON q.from_user_id = u.telegram_id
+             WHERE q.id = $1`,
+            [req.params.id]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.status(404).json({ error: 'Вопрос не найден' });
+        }
+    } catch (error) {
+        console.error('Error fetching question:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 5. Отправить новый вопрос
+app.post('/api/questions', async (req, res) => {
+    try {
+        const { from_user_id, to_user_id, text } = req.body;
+        
+        if (!to_user_id || !text) {
+            return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
+        }
+        
+        // Проверяем, существует ли получатель
+        const userResult = await db.query(
+            `SELECT telegram_id FROM users WHERE telegram_id = $1`,
+            [to_user_id]
+        );
+        
+        // Если пользователя нет, создаем его
+        if (userResult.rows.length === 0) {
+            await db.query(
+                `INSERT INTO users (telegram_id) VALUES ($1)`,
+                [to_user_id]
+            );
+        }
+        
+        // Сохраняем отправителя, если он указан
+        if (from_user_id && from_user_id !== 'null') {
+            await db.query(
+                `INSERT INTO users (telegram_id) VALUES ($1) 
+                 ON CONFLICT (telegram_id) DO NOTHING`,
+                [from_user_id]
+            );
+        }
+        
+        // Сохраняем вопрос
+        const result = await db.query(
+            `INSERT INTO questions (from_user_id, to_user_id, text) 
+             VALUES ($1, $2, $3) RETURNING *`,
+            [from_user_id && from_user_id !== 'null' ? from_user_id : null, to_user_id, text]
+        );
+        
+        const question = result.rows[0];
+        
+        res.status(201).json({ 
+            success: true, 
+            question: question 
+        });
+        
+    } catch (error) {
+        console.error('Error creating question:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 6. Ответить на вопрос
+app.post('/api/questions/:id/answer', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { answer } = req.body;
+        
+        if (!answer) {
+            return res.status(400).json({ error: 'Не указан ответ' });
+        }
+        
+        // Получаем вопрос
+        const questionResult = await db.query(
+            `SELECT * FROM questions WHERE id = $1`,
+            [id]
+        );
+        
+        if (questionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Вопрос не найден' });
+        }
+        
+        const question = questionResult.rows[0];
+        
+        // Обновляем вопрос с ответом
+        const result = await db.query(
+            `UPDATE questions 
+             SET answer = $1, is_answered = TRUE, answered_at = CURRENT_TIMESTAMP 
+             WHERE id = $2 RETURNING *`,
+            [answer, id]
+        );
+        
+        // Удаляем старую картинку (если есть)
+        await db.query(
+            `DELETE FROM question_images WHERE question_id = $1`,
+            [id]
+        );
+        
+        res.json({ 
+            success: true, 
+            question: result.rows[0] 
+        });
+        
+    } catch (error) {
+        console.error('Error answering question:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 7. Удалить вопрос
+app.delete('/api/questions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await db.query(
+            `DELETE FROM questions WHERE id = $1 RETURNING *`,
+            [id]
+        );
+        
+        if (result.rowCount > 0) {
+            res.json({ success: true, message: 'Вопрос удален' });
+        } else {
+            res.status(404).json({ error: 'Вопрос не найден' });
+        }
+        
+    } catch (error) {
+        console.error('Error deleting question:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // ========== TELEGRAM BOT WEBHOOK ==========
 app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
@@ -898,10 +739,19 @@ async function startServer() {
     try {
         await initDB();
         
+        // Создаем папку uploads при запуске
+        const fs = require('fs');
+        const uploadsDir = path.join(__dirname, '../uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+            console.log('📁 Папка uploads создана');
+        }
+        
         // Запускаем сервер
         app.listen(PORT, async () => {
             console.log(`🚀 Сервер запущен на порту ${PORT}`);
             console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
+            console.log(`📁 Загрузки: ${WEB_APP_URL}/uploads`);
             console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
             
             // Настраиваем вебхук для бота
@@ -921,51 +771,6 @@ async function startServer() {
         process.exit(1);
     }
 }
-
-// В server.js добавляем endpoint для шеринга через бота
-app.post('/api/share-to-chat', async (req, res) => {
-    try {
-        const { userId, questionId, chatId } = req.body;
-        
-        const questionResult = await db.query(
-            `SELECT q.* FROM questions q WHERE q.id = $1`,
-            [questionId]
-        );
-        
-        if (questionResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Question not found' });
-        }
-        
-        const question = questionResult.rows[0];
-        const userLink = `https://t.me/${bot.botInfo.username}?start=ask_${userId}`;
-        
-        // Отправляем сообщение через бота
-        await bot.telegram.sendMessage(
-            chatId || userId, // Если нет chatId, шлём самому пользователю
-            `💬 *Ответ на анонимный вопрос!*\n\n` +
-            `📝 *Вопрос:* ${question.text.substring(0, 150)}${question.text.length > 150 ? '...' : ''}\n\n` +
-            `💡 *Ответ:* ${question.answer ? question.answer.substring(0, 150) + (question.answer.length > 150 ? '...' : '') : 'Смотри в приложении'}\n\n` +
-            `👇 *Задай и мне вопрос:*\n${userLink}`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                        {
-                            text: '✍️ Задать вопрос',
-                            url: userLink
-                        }
-                    ]]
-                }
-            }
-        );
-        
-        res.json({ success: true, message: 'Sent to chat' });
-        
-    } catch (error) {
-        console.error('Error sharing to chat:', error);
-        res.status(500).json({ error: 'Sharing failed' });
-    }
-});
 
 // Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
