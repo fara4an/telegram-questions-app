@@ -4,11 +4,14 @@ const { Telegraf } = require('telegraf');
 const path = require('path');
 const { Client } = require('pg');
 const cors = require('cors');
-const { createCanvas } = require('canvas');
 
 const app = express();
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://ваш-проект.onrender.com';
+
+// Главный админ
+const MAIN_ADMIN_ID = 781166716;
+const MAIN_ADMIN_USERNAME = 'zxc4an';
 
 // ========== БАЗА ДАННЫХ ==========
 const db = new Client({
@@ -21,22 +24,19 @@ async function initDB() {
         await db.connect();
         console.log('✅ База данных подключена');
         
-        // Создаем таблицы с обновленной структурой
+        // Создаем таблицы
         await db.query(`
-            -- Удаляем старые таблицы если нужно
-            DROP TABLE IF EXISTS question_images CASCADE;
-            DROP TABLE IF EXISTS questions CASCADE;
-            DROP TABLE IF EXISTS users CASCADE;
-            
-            -- Создаем таблицу пользователей
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
                 username VARCHAR(255),
+                is_admin BOOLEAN DEFAULT FALSE,
+                is_super_admin BOOLEAN DEFAULT FALSE,
+                invited_by BIGINT,
+                referral_code VARCHAR(50) UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
-            -- Создаем таблицу вопросов
             CREATE TABLE IF NOT EXISTS questions (
                 id SERIAL PRIMARY KEY,
                 from_user_id BIGINT,
@@ -48,26 +48,60 @@ async function initDB() {
                 answered_at TIMESTAMP
             );
             
-            -- Создаем таблицу для кэширования картинок
-            CREATE TABLE IF NOT EXISTS question_images (
+            CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
-                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                image_base64 TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(question_id)
+                admin_id BIGINT NOT NULL,
+                referral_code VARCHAR(50) UNIQUE NOT NULL,
+                max_uses INTEGER DEFAULT 100,
+                used_count INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
-            -- Создаем индексы
             CREATE INDEX IF NOT EXISTS idx_questions_to_user ON questions(to_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_from_user ON questions(from_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(is_answered);
-            CREATE INDEX IF NOT EXISTS idx_question_images_question ON question_images(question_id);
+            CREATE INDEX IF NOT EXISTS idx_users_admin ON users(is_admin);
+            CREATE INDEX IF NOT EXISTS idx_users_invited_by ON users(invited_by);
+            CREATE INDEX IF NOT EXISTS idx_referrals_admin ON referrals(admin_id);
         `);
         
         console.log('✅ Таблицы созданы/обновлены');
         
+        // Проверяем и создаем главного админа
+        await ensureMainAdmin();
+        
     } catch (error) {
         console.error('❌ Ошибка БД:', error.message);
+    }
+}
+
+// Создаем главного админа если его нет
+async function ensureMainAdmin() {
+    try {
+        const result = await db.query(
+            `SELECT * FROM users WHERE telegram_id = $1`,
+            [MAIN_ADMIN_ID]
+        );
+        
+        if (result.rows.length === 0) {
+            await db.query(
+                `INSERT INTO users (telegram_id, username, is_admin, is_super_admin) 
+                 VALUES ($1, $2, TRUE, TRUE)`,
+                [MAIN_ADMIN_ID, MAIN_ADMIN_USERNAME]
+            );
+            console.log('✅ Главный админ создан');
+        } else {
+            // Обновляем существующего пользователя до главного админа
+            await db.query(
+                `UPDATE users SET is_admin = TRUE, is_super_admin = TRUE, username = $2 
+                 WHERE telegram_id = $1`,
+                [MAIN_ADMIN_ID, MAIN_ADMIN_USERNAME]
+            );
+            console.log('✅ Главный админ обновлен');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка создания главного админа:', error.message);
     }
 }
 
@@ -76,12 +110,238 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// ========== УВЕДОМЛЕНИЯ ==========
+// ========== ПРОВЕРКА АДМИНА ==========
+async function isSuperAdmin(userId) {
+    try {
+        const result = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        return result.rows.length > 0 && result.rows[0].is_super_admin;
+    } catch (error) {
+        console.error('Ошибка проверки супер-админа:', error.message);
+        return false;
+    }
+}
 
-// Функция отправки уведомления о новом вопросе
+async function isAdmin(userId) {
+    try {
+        const result = await db.query(
+            `SELECT is_admin FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        return result.rows.length > 0 && result.rows[0].is_admin;
+    } catch (error) {
+        console.error('Ошибка проверки админа:', error.message);
+        return false;
+    }
+}
+
+// ========== АДМИН API ==========
+
+// Получить статистику для админа
+app.get('/api/admin/stats', async (req, res) => {
+    try {
+        const userId = req.query.userId;
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'Не указан userId' });
+        }
+        
+        // Проверяем права
+        const isSuper = await isSuperAdmin(userId);
+        const isAdm = await isAdmin(userId);
+        
+        if (!isSuper && !isAdm) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        // Общая статистика
+        const totalUsers = await db.query(`SELECT COUNT(*) as count FROM users`);
+        const totalQuestions = await db.query(`SELECT COUNT(*) as count FROM questions`);
+        const answeredQuestions = await db.query(`SELECT COUNT(*) as count FROM questions WHERE is_answered = TRUE`);
+        const activeToday = await db.query(`
+            SELECT COUNT(DISTINCT from_user_id) as count 
+            FROM questions 
+            WHERE created_at >= CURRENT_DATE
+            UNION ALL
+            SELECT COUNT(DISTINCT to_user_id) 
+            FROM questions 
+            WHERE created_at >= CURRENT_DATE
+        `);
+        
+        // Статистика по пользователям (только для супер-админа)
+        let userStats = [];
+        if (isSuper) {
+            userStats = await db.query(`
+                SELECT 
+                    u.telegram_id,
+                    u.username,
+                    u.is_admin,
+                    u.is_super_admin,
+                    u.created_at,
+                    COALESCE(q_sent.sent_count, 0) as questions_sent,
+                    COALESCE(q_received.received_count, 0) as questions_received,
+                    COALESCE(q_answered.answered_count, 0) as questions_answered,
+                    COALESCE(r.invited_count, 0) as invited_users
+                FROM users u
+                LEFT JOIN (
+                    SELECT from_user_id, COUNT(*) as sent_count 
+                    FROM questions 
+                    GROUP BY from_user_id
+                ) q_sent ON u.telegram_id = q_sent.from_user_id
+                LEFT JOIN (
+                    SELECT to_user_id, COUNT(*) as received_count 
+                    FROM questions 
+                    GROUP BY to_user_id
+                ) q_received ON u.telegram_id = q_received.to_user_id
+                LEFT JOIN (
+                    SELECT to_user_id, COUNT(*) as answered_count 
+                    FROM questions 
+                    WHERE is_answered = TRUE
+                    GROUP BY to_user_id
+                ) q_answered ON u.telegram_id = q_answered.to_user_id
+                LEFT JOIN (
+                    SELECT invited_by, COUNT(*) as invited_count 
+                    FROM users 
+                    WHERE invited_by IS NOT NULL
+                    GROUP BY invited_by
+                ) r ON u.telegram_id = r.invited_by
+                ORDER BY u.created_at DESC
+                LIMIT 100
+            `);
+        }
+        
+        // Статистика по рефералам (для всех админов)
+        const referralStats = await db.query(`
+            SELECT 
+                r.*,
+                u.username as admin_username,
+                COUNT(ru.telegram_id) as used_count
+            FROM referrals r
+            JOIN users u ON r.admin_id = u.telegram_id
+            LEFT JOIN users ru ON r.referral_code = ru.referral_code
+            WHERE r.admin_id = $1 OR $2 = TRUE
+            GROUP BY r.id, u.username
+            ORDER BY r.created_at DESC
+        `, [userId, isSuper]);
+        
+        res.json({
+            success: true,
+            stats: {
+                totalUsers: parseInt(totalUsers.rows[0].count),
+                totalQuestions: parseInt(totalQuestions.rows[0].count),
+                answeredQuestions: parseInt(answeredQuestions.rows[0].count),
+                activeToday: parseInt(activeToday.rows[0].count) + parseInt(activeToday.rows[1]?.count || 0),
+                isSuperAdmin: isSuper,
+                isAdmin: isAdm
+            },
+            userStats: userStats.rows,
+            referralStats: referralStats.rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching admin stats:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Сделать пользователя админом
+app.post('/api/admin/make-admin', async (req, res) => {
+    try {
+        const { userId, targetUserId } = req.body;
+        
+        if (!userId || !targetUserId) {
+            return res.status(400).json({ error: 'Не указаны параметры' });
+        }
+        
+        // Проверяем что только супер-админ может создавать админов
+        const isSuper = await isSuperAdmin(userId);
+        if (!isSuper) {
+            return res.status(403).json({ error: 'Только главный админ может создавать админов' });
+        }
+        
+        // Делаем пользователя админом
+        await db.query(
+            `UPDATE users SET is_admin = TRUE WHERE telegram_id = $1`,
+            [targetUserId]
+        );
+        
+        // Отправляем уведомление новому админу
+        try {
+            await bot.telegram.sendMessage(targetUserId, 
+                `🎉 *Поздравляем!*\n\nВы были назначены админом в боте "Анонимные вопросы".\n\n` +
+                `Теперь у вас есть доступ к админ-панели в приложении!`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch (error) {
+            console.error('Ошибка отправки уведомления админу:', error.message);
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Пользователь назначен админом'
+        });
+        
+    } catch (error) {
+        console.error('Error making admin:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Создать реферальную ссылку
+app.post('/api/admin/create-referral', async (req, res) => {
+    try {
+        const { userId, maxUses = 100 } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'Не указан userId' });
+        }
+        
+        // Проверяем права
+        const isAdm = await isAdmin(userId);
+        if (!isAdm) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        // Генерируем уникальный код
+        const referralCode = generateReferralCode();
+        const botInfo = await bot.telegram.getMe();
+        const referralLink = `https://t.me/${botInfo.username}?start=ref_${referralCode}`;
+        
+        // Сохраняем реферал
+        await db.query(
+            `INSERT INTO referrals (admin_id, referral_code, max_uses) 
+             VALUES ($1, $2, $3)`,
+            [userId, referralCode, maxUses]
+        );
+        
+        res.json({ 
+            success: true, 
+            referralCode,
+            referralLink,
+            message: 'Реферальная ссылка создана'
+        });
+        
+    } catch (error) {
+        console.error('Error creating referral:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Генерация реферального кода
+function generateReferralCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// ========== УВЕДОМЛЕНИЯ ==========
 async function sendQuestionNotification(questionId) {
     try {
-        // Получаем информацию о вопросе и получателе
         const questionResult = await db.query(
             `SELECT q.*, u.telegram_id, u.username
              FROM questions q
@@ -94,15 +354,13 @@ async function sendQuestionNotification(questionId) {
         
         const question = questionResult.rows[0];
         const toUserId = question.telegram_id;
-        const questionText = question.text.length > 100 ? 
-            question.text.substring(0, 100) + '...' : question.text;
+        const questionText = question.text.length > 80 ? 
+            question.text.substring(0, 80) + '...' : question.text;
         
-        // Формируем текст уведомления
         const messageText = `📥 *Новый анонимный вопрос!*\n\n` +
                           `💬 *Вопрос:*\n"${questionText}"\n\n` +
                           `👇 *Открой приложение, чтобы ответить:*`;
         
-        // Ссылка на приложение
         const appUrl = `${WEB_APP_URL}`;
         
         try {
@@ -117,8 +375,6 @@ async function sendQuestionNotification(questionId) {
                     ]]
                 }
             });
-            
-            console.log(`✅ Уведомление о вопросе отправлено пользователю ${toUserId}`);
         } catch (error) {
             console.error('❌ Ошибка отправки уведомления о вопросе:', error.message);
         }
@@ -128,10 +384,8 @@ async function sendQuestionNotification(questionId) {
     }
 }
 
-// Функция отправки уведомления об ответе
 async function sendAnswerNotification(questionId) {
     try {
-        // Получаем информацию о вопросе и отправителе (если не аноним)
         const questionResult = await db.query(
             `SELECT q.*, 
                     from_user.telegram_id as from_telegram_id,
@@ -148,13 +402,11 @@ async function sendAnswerNotification(questionId) {
         
         const question = questionResult.rows[0];
         
-        // Если вопрос был задан не анонимно (есть from_user_id)
         if (question.from_telegram_id && question.from_user_id) {
             const fromUserId = question.from_telegram_id;
-            const questionText = question.text.length > 80 ? 
-                question.text.substring(0, 80) + '...' : question.text;
+            const questionText = question.text.length > 60 ? 
+                question.text.substring(0, 60) + '...' : question.text;
             
-            // Формируем текст уведомления (НЕ показываем ответ!)
             const messageText = `💬 *На твой вопрос ответили!*\n\n` +
                               `📌 *Твой вопрос:*\n"${questionText}"\n\n` +
                               `👇 *Загляни в приложение, чтобы увидеть ответ!*`;
@@ -171,8 +423,6 @@ async function sendAnswerNotification(questionId) {
                         ]]
                     }
                 });
-                
-                console.log(`✅ Уведомление об ответе отправлено пользователю ${fromUserId}`);
             } catch (error) {
                 console.error('❌ Ошибка отправки уведомления об ответе:', error.message);
             }
@@ -183,7 +433,7 @@ async function sendAnswerNotification(questionId) {
     }
 }
 
-// ========== ГЕНЕРАЦИЯ И СОХРАНЕНИЕ КАРТИНКИ ==========
+// ========== ШЕРИНГ ==========
 app.post('/api/share-to-chat', async (req, res) => {
     try {
         const { userId, questionId } = req.body;
@@ -191,9 +441,6 @@ app.post('/api/share-to-chat', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны параметры' });
         }
 
-        console.log(`🔄 Шеринг вопроса ${questionId} для пользователя ${userId}`);
-
-        // 1. Получаем вопрос
         const questionResult = await db.query(
             `SELECT q.*, u.username as from_username 
              FROM questions q
@@ -203,108 +450,38 @@ app.post('/api/share-to-chat', async (req, res) => {
         );
         
         if (questionResult.rows.length === 0) {
-            console.log(`❌ Вопрос ${questionId} не найден или нет ответа`);
             return res.status(404).json({ error: 'Вопрос не найден или нет ответа' });
         }
         
         const question = questionResult.rows[0];
-        console.log(`✅ Найден вопрос: "${question.text.substring(0, 50)}..."`);
         
-        // 2. Проверяем кэш в БД (если таблица существует)
-        let imageBase64 = null;
-        try {
-            const cachedImage = await db.query(
-                `SELECT image_base64 FROM question_images WHERE question_id = $1`,
-                [questionId]
-            );
-            
-            if (cachedImage.rows.length > 0) {
-                imageBase64 = cachedImage.rows[0].image_base64;
-                console.log('✅ Используем кэшированную картинку');
-            }
-        } catch (cacheError) {
-            console.log('ℹ️ Таблица question_images не доступна, генерируем новую картинку');
-        }
-        
-        // 3. Генерируем новую картинку если нет в кэше
-        if (!imageBase64) {
-            try {
-                console.log('🎨 Генерируем новую картинку...');
-                const imageBuffer = await generateBeautifulImage(question);
-                imageBase64 = imageBuffer.toString('base64');
-                
-                // 4. Сохраняем в БД (если таблица существует)
-                try {
-                    await db.query(
-                        `INSERT INTO question_images (question_id, image_base64) 
-                         VALUES ($1, $2) 
-                         ON CONFLICT (question_id) 
-                         DO UPDATE SET image_base64 = EXCLUDED.image_base64`,
-                        [questionId, imageBase64]
-                    );
-                    console.log('✅ Картинка сохранена в БД');
-                } catch (saveError) {
-                    console.log('ℹ️ Не удалось сохранить картинку в БД, используем без кэша');
-                }
-                
-            } catch (genError) {
-                console.error('❌ Ошибка генерации картинки:', genError.message);
-                // Продолжаем без картинки
-                imageBase64 = null;
-            }
-        }
-        
-        // 5. Получаем информацию о боте
         let botInfo;
         try {
             botInfo = await bot.telegram.getMe();
         } catch (error) {
-            console.error('❌ Ошибка получения информации о боте:', error.message);
             botInfo = { username: 'dota2servicebot' };
         }
         
         const userLink = `https://t.me/${botInfo.username}?start=ask_${userId}`;
         
-        // 6. Формируем текст сообщения
         const messageText = `🎯 *Мой ответ на анонимный вопрос!*\n\n` +
-                           `💬 *Вопрос:*\n"${question.text.length > 100 ? question.text.substring(0, 100) + '...' : question.text}"\n\n` +
-                           `💡 *Мой ответ:*\n"${question.answer.length > 100 ? question.answer.substring(0, 100) + '...' : question.answer}"\n\n` +
+                           `💬 *Вопрос:*\n"${question.text.length > 80 ? question.text.substring(0, 80) + '...' : question.text}"\n\n` +
+                           `💡 *Мой ответ:*\n"${question.answer.length > 80 ? question.answer.substring(0, 80) + '...' : question.answer}"\n\n` +
                            `👇 *Хочешь задать мне вопрос?*\n` +
                            `Нажми кнопку ниже!`;
         
-        // 7. Отправляем в чат
         try {
-            if (imageBase64) {
-                // Отправляем с картинкой
-                const imageBuffer = Buffer.from(imageBase64, 'base64');
-                await bot.telegram.sendPhoto(userId, { source: imageBuffer }, {
-                    caption: messageText,
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { 
-                                text: '✍️ Задать мне вопрос', 
-                                url: userLink 
-                            }
-                        ]]
-                    }
-                });
-                console.log('✅ Картинка отправлена в чат');
-            } else {
-                // Отправляем только текст
-                await bot.telegram.sendMessage(userId, messageText, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { 
-                                text: '✍️ Задать мне вопрос', 
-                                url: userLink 
-                            }
-                        ]]
-                    }
-                });
-                console.log('✅ Текст отправлен в чат (без картинки)');
-            }
+            await bot.telegram.sendMessage(userId, messageText, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { 
+                            text: '✍️ Задать мне вопрос', 
+                            url: userLink 
+                        }
+                    ]]
+                }
+            });
             
             return res.json({ 
                 success: true, 
@@ -315,19 +492,18 @@ app.post('/api/share-to-chat', async (req, res) => {
         } catch (sendError) {
             console.error('❌ Ошибка отправки в Telegram:', sendError.message);
             
-            // Пробуем отправить простой текст без форматирования
             try {
-                const simpleText = `Мой ответ на анонимный вопрос!\n\n` +
-                                 `Вопрос: "${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"\n\n` +
-                                 `Мой ответ: "${question.answer.substring(0, 80)}${question.answer.length > 80 ? '...' : ''}"\n\n` +
-                                 `Задай мне вопрос: ${userLink}`;
+                const simpleText = `🎯 Мой ответ на анонимный вопрос!\n\n` +
+                                 `💬 Вопрос:\n"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"\n\n` +
+                                 `💡 Мой ответ:\n"${question.answer.substring(0, 80)}${question.answer.length > 80 ? '...' : ''}"\n\n` +
+                                 `👇 Хочешь задать мне вопрос?\n` +
+                                 `Нажми: ${userLink}`;
                 
                 await bot.telegram.sendMessage(userId, simpleText);
-                console.log('✅ Простой текст отправлен в чат');
                 
                 return res.json({ 
                     success: true, 
-                    message: '✅ Ответ отправлен (упрощенный формат)',
+                    message: '✅ Ответ отправлен!',
                     userLink: userLink
                 });
             } catch (simpleError) {
@@ -348,199 +524,36 @@ app.post('/api/share-to-chat', async (req, res) => {
     }
 });
 
-// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ (ИСПРАВЛЕННАЯ) ==========
-async function generateBeautifulImage(question) {
-    try {
-        const width = 1200;
-        const height = 1600;
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        
-        // 1. Фон - сплошной темный цвет
-        ctx.fillStyle = '#0a0a0a';
-        ctx.fillRect(0, 0, width, height);
-        
-        // 2. Добавляем градиент сверху
-        const gradient = ctx.createLinearGradient(0, 0, width, 0);
-        gradient.addColorStop(0, '#2e8de6');
-        gradient.addColorStop(1, '#6c5ce7');
-        
-        // 3. Верхняя плашка с заголовком
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, 300);
-        
-        // 4. Заголовок
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 70px "Arial"';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬', width / 2, 120);
-        
-        ctx.font = 'bold 50px "Arial"';
-        ctx.fillText('Ответ на вопрос', width / 2, 220);
-        
-        // 5. Карточка вопроса
-        const cardWidth = width * 0.85;
-        const cardHeight = 350;
-        const cardX = (width - cardWidth) / 2;
-        const cardY = 350;
-        
-        // Скругленные углы (простая реализация)
-        ctx.fillStyle = '#1a1a1a';
-        ctx.beginPath();
-        ctx.roundRect = function(x, y, w, h, r) {
-            if (w < 2 * r) r = w / 2;
-            if (h < 2 * r) r = h / 2;
-            this.beginPath();
-            this.moveTo(x + r, y);
-            this.arcTo(x + w, y, x + w, y + h, r);
-            this.arcTo(x + w, y + h, x, y + h, r);
-            this.arcTo(x, y + h, x, y, r);
-            this.arcTo(x, y, x + w, y, r);
-            this.closePath();
-            return this;
-        };
-        
-        ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 30);
-        ctx.fill();
-        
-        // Граница карточки
-        ctx.strokeStyle = '#2e8de6';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        // 6. Текст вопроса
-        ctx.fillStyle = '#2e8de6';
-        ctx.font = 'bold 36px "Arial"';
-        ctx.textAlign = 'left';
-        ctx.fillText('❓ ВОПРОС:', cardX + 40, cardY + 70);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '28px "Arial"';
-        wrapText(ctx, `"${question.text}"`, cardX + 40, cardY + 130, cardWidth - 80, 35, 4);
-        
-        // 7. Карточка ответа
-        const answerCardY = cardY + cardHeight + 40;
-        
-        ctx.fillStyle = '#1a1a1a';
-        ctx.roundRect(cardX, answerCardY, cardWidth, cardHeight, 30);
-        ctx.fill();
-        
-        // Граница карточки ответа
-        ctx.strokeStyle = '#4CAF50';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        // 8. Текст ответа
-        ctx.fillStyle = '#4CAF50';
-        ctx.font = 'bold 36px "Arial"';
-        ctx.textAlign = 'left';
-        ctx.fillText('💡 ОТВЕТ:', cardX + 40, answerCardY + 70);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '28px "Arial"';
-        wrapText(ctx, `"${question.answer}"`, cardX + 40, answerCardY + 130, cardWidth - 80, 35, 4);
-        
-        // 9. Призыв к действию (нижняя часть)
-        const ctaY = answerCardY + cardHeight + 80;
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 40px "Arial"';
-        ctx.textAlign = 'center';
-        ctx.fillText('👇 Задай и мне вопрос!', width / 2, ctaY);
-        
-        // 10. Ссылка на бота
-        ctx.fillStyle = '#2e8de6';
-        ctx.font = 'bold 36px "Arial"';
-        ctx.fillText('t.me/dota2servicebot', width / 2, ctaY + 70);
-        
-        // 11. Водяной знак
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.font = '24px "Arial"';
-        ctx.fillText('Telegram Questions App', width / 2, height - 50);
-        
-        return canvas.toBuffer('image/png');
-    } catch (error) {
-        console.error('❌ Ошибка генерации изображения:', error.message);
-        // Создаем простую картинку-заглушку
-        const canvas = createCanvas(800, 600);
-        const ctx = canvas.getContext('2d');
-        
-        ctx.fillStyle = '#0a0a0a';
-        ctx.fillRect(0, 0, 800, 600);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 40px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬 Ответ на анонимный вопрос', 400, 200);
-        
-        ctx.font = '24px Arial';
-        ctx.fillText('Задай мне вопрос:', 400, 300);
-        
-        ctx.fillStyle = '#2e8de6';
-        ctx.font = 'bold 28px Arial';
-        ctx.fillText('t.me/dota2servicebot', 400, 400);
-        
-        return canvas.toBuffer('image/png');
-    }
-}
+// ========== ОБЩИЕ API ==========
 
-// Функция для переноса текста
-function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5) {
+// Проверить права пользователя
+app.get('/api/user/role/:userId', async (req, res) => {
     try {
-        const words = text.split(' ');
-        let line = '';
-        let lines = [];
-        let lineCount = 0;
+        const result = await db.query(
+            `SELECT telegram_id, username, is_admin, is_super_admin 
+             FROM users WHERE telegram_id = $1`,
+            [req.params.userId]
+        );
         
-        for (let n = 0; n < words.length; n++) {
-            const testLine = line + words[n] + ' ';
-            const metrics = ctx.measureText(testLine);
-            const testWidth = metrics.width;
-            
-            if (testWidth > maxWidth && n > 0) {
-                lines.push(line);
-                line = words[n] + ' ';
-                lineCount++;
-                
-                if (lineCount >= maxLines - 1) {
-                    // Обрезаем с многоточием
-                    let lastLine = '';
-                    for (let i = n; i < words.length; i++) {
-                        const test = lastLine + words[i] + ' ';
-                        if (ctx.measureText(test + '...').width > maxWidth) break;
-                        lastLine = test;
-                    }
-                    lines.push(lastLine.trim() + '...');
-                    break;
-                }
-            } else {
-                line = testLine;
-            }
-        }
-        
-        if (lineCount < maxLines && line.trim()) {
-            lines.push(line.trim());
-        }
-        
-        for (let i = 0; i < lines.length; i++) {
-            ctx.fillText(lines[i], x, y + (i * lineHeight));
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.json({
+                telegram_id: req.params.userId,
+                username: null,
+                is_admin: false,
+                is_super_admin: false
+            });
         }
     } catch (error) {
-        console.error('❌ Ошибка в wrapText:', error.message);
-        // Просто выводим текст без переноса
-        ctx.fillText(text.substring(0, 100) + (text.length > 100 ? '...' : ''), x, y);
+        console.error('Error fetching user role:', error.message);
+        res.json({
+            telegram_id: req.params.userId,
+            username: null,
+            is_admin: false,
+            is_super_admin: false
+        });
     }
-}
-
-// ========== ОСТАЛЬНЫЕ API ==========
-
-// Health check
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        service: 'Telegram Questions API'
-    });
 });
 
 // Получить информацию о пользователе
@@ -629,21 +642,40 @@ app.get('/api/question/:id', async (req, res) => {
 // Отправить новый вопрос
 app.post('/api/questions', async (req, res) => {
     try {
-        const { from_user_id, to_user_id, text } = req.body;
+        const { from_user_id, to_user_id, text, referral_code } = req.body;
         
         if (!to_user_id || !text) {
             return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
+        }
+        
+        // Если есть реферальный код, находим админа
+        let invitedBy = null;
+        if (referral_code) {
+            const referralResult = await db.query(
+                `SELECT admin_id FROM referrals WHERE referral_code = $1 AND is_active = TRUE`,
+                [referral_code]
+            );
+            if (referralResult.rows.length > 0) {
+                invitedBy = referralResult.rows[0].admin_id;
+                // Увеличиваем счетчик использований
+                await db.query(
+                    `UPDATE referrals SET used_count = used_count + 1 WHERE referral_code = $1`,
+                    [referral_code]
+                );
+            }
         }
         
         // Сохраняем отправителя в БД если он не аноним
         if (from_user_id) {
             try {
                 await db.query(
-                    `INSERT INTO users (telegram_id, username) 
-                     VALUES ($1, $2) 
+                    `INSERT INTO users (telegram_id, username, invited_by, referral_code) 
+                     VALUES ($1, $2, $3, $4) 
                      ON CONFLICT (telegram_id) 
-                     DO UPDATE SET username = EXCLUDED.username`,
-                    [from_user_id, `user_${from_user_id}`]
+                     DO UPDATE SET username = EXCLUDED.username, 
+                                   invited_by = COALESCE(users.invited_by, EXCLUDED.invited_by),
+                                   referral_code = COALESCE(users.referral_code, EXCLUDED.referral_code)`,
+                    [from_user_id, `user_${from_user_id}`, invitedBy, referral_code]
                 );
             } catch (error) {
                 console.error('Ошибка сохранения отправителя:', error.message);
@@ -685,7 +717,6 @@ app.post('/api/questions/:id/answer', async (req, res) => {
             return res.status(400).json({ error: 'Не указан ответ' });
         }
         
-        // Обновляем вопрос с ответом
         const result = await db.query(
             `UPDATE questions 
              SET answer = $1, is_answered = TRUE, answered_at = CURRENT_TIMESTAMP 
@@ -698,16 +729,6 @@ app.post('/api/questions/:id/answer', async (req, res) => {
         }
         
         const question = result.rows[0];
-        
-        // Удаляем старую картинку из кэша (если таблица существует)
-        try {
-            await db.query(
-                `DELETE FROM question_images WHERE question_id = $1`,
-                [id]
-            );
-        } catch (error) {
-            // Игнорируем ошибки если таблицы нет
-        }
         
         // Отправляем уведомление отправителю вопроса (если не аноним)
         setTimeout(() => {
@@ -730,14 +751,6 @@ app.delete('/api/questions/:id', async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Удаляем картинку из кэша (если таблица существует)
-        try {
-            await db.query(`DELETE FROM question_images WHERE question_id = $1`, [id]);
-        } catch (error) {
-            // Игнорируем ошибки
-        }
-        
-        // Удаляем вопрос
         const result = await db.query(
             `DELETE FROM questions WHERE id = $1 RETURNING *`,
             [id]
@@ -760,32 +773,25 @@ app.get('/api/stats/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
         
-        const [incomingRes, sentRes, answeredRes] = await Promise.all([
-            db.query(
-                `SELECT COUNT(*) as count FROM questions WHERE to_user_id = $1`,
-                [userId]
-            ),
-            db.query(
-                `SELECT COUNT(*) as count FROM questions WHERE from_user_id = $1`,
-                [userId]
-            ),
-            db.query(
-                `SELECT COUNT(*) as count FROM questions 
-                 WHERE to_user_id = $1 AND is_answered = TRUE`,
-                [userId]
-            )
+        const [incomingRes, sentRes, answeredRes, invitedRes] = await Promise.all([
+            db.query(`SELECT COUNT(*) as count FROM questions WHERE to_user_id = $1`, [userId]),
+            db.query(`SELECT COUNT(*) as count FROM questions WHERE from_user_id = $1`, [userId]),
+            db.query(`SELECT COUNT(*) as count FROM questions WHERE to_user_id = $1 AND is_answered = TRUE`, [userId]),
+            db.query(`SELECT COUNT(*) as count FROM users WHERE invited_by = $1`, [userId])
         ]);
         
         const total = parseInt(incomingRes.rows[0].count) + parseInt(sentRes.rows[0].count);
         const received = parseInt(incomingRes.rows[0].count);
         const sent = parseInt(sentRes.rows[0].count);
         const answered = parseInt(answeredRes.rows[0].count);
+        const invited = parseInt(invitedRes.rows[0].count);
         
         res.json({
             total,
             received,
             sent,
-            answered
+            answered,
+            invited
         });
         
     } catch (error) {
@@ -794,7 +800,8 @@ app.get('/api/stats/:userId', async (req, res) => {
             total: 0,
             received: 0,
             sent: 0,
-            answered: 0
+            answered: 0,
+            invited: 0
         });
     }
 });
@@ -809,14 +816,42 @@ bot.start(async (ctx) => {
     const firstName = ctx.from.first_name || 'пользователь';
     const username = ctx.from.username;
     
+    let invitedBy = null;
+    let referralCode = null;
+    
+    // Проверяем реферальную ссылку
+    if (ctx.startPayload && ctx.startPayload.startsWith('ref_')) {
+        referralCode = ctx.startPayload.replace('ref_', '');
+        
+        // Находим админа по реферальному коду
+        const referralResult = await db.query(
+            `SELECT admin_id FROM referrals 
+             WHERE referral_code = $1 AND is_active = TRUE 
+             AND (max_uses IS NULL OR used_count < max_uses)`,
+            [referralCode]
+        );
+        
+        if (referralResult.rows.length > 0) {
+            invitedBy = referralResult.rows[0].admin_id;
+            
+            // Увеличиваем счетчик использований
+            await db.query(
+                `UPDATE referrals SET used_count = used_count + 1 WHERE referral_code = $1`,
+                [referralCode]
+            );
+        }
+    }
+    
     // Сохраняем пользователя
     try {
         await db.query(
-            `INSERT INTO users (telegram_id, username) 
-             VALUES ($1, $2) 
+            `INSERT INTO users (telegram_id, username, invited_by, referral_code) 
+             VALUES ($1, $2, $3, $4) 
              ON CONFLICT (telegram_id) 
-             DO UPDATE SET username = EXCLUDED.username`,
-            [userId, username || `user_${userId}`]
+             DO UPDATE SET username = EXCLUDED.username, 
+                           invited_by = COALESCE(users.invited_by, EXCLUDED.invited_by),
+                           referral_code = COALESCE(users.referral_code, EXCLUDED.referral_code)`,
+            [userId, username || `user_${userId}`, invitedBy, referralCode]
         );
     } catch (error) {
         console.error('Ошибка сохранения пользователя:', error.message);
@@ -848,28 +883,37 @@ bot.start(async (ctx) => {
         // Обычный старт
         const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
         
-        await ctx.reply(
-            `👋 Привет, ${firstName}!\n\nЯ бот для анонимных вопросов.\n\n🔗 *Твоя персональная ссылка:*\n\`${userLink}\`\n\n📤 *Отправь эту ссылку друзьям!*\nОни смогут задать тебе вопрос *анонимно*!`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
-                                web_app: { url: WEB_APP_URL }
-                            }
-                        ],
-                        [
-                            {
-                                text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
-                                url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!%20👇`
-                            }
-                        ]
-                    ]
-                }
-            }
+        let welcomeText = `👋 Привет, ${firstName}!\n\nЯ бот для анонимных вопросов.\n\n🔗 *Твоя персональная ссылка:*\n\`${userLink}\`\n\n📤 *Отправь эту ссылку друзьям!*\nОни смогут задать тебе вопрос *анонимно*!`;
+        
+        // Если пользователь админ, показываем дополнительную информацию
+        const userRole = await db.query(
+            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
+            [userId]
         );
+        
+        if (userRole.rows.length > 0 && (userRole.rows[0].is_admin || userRole.rows[0].is_super_admin)) {
+            welcomeText += `\n\n🎯 *Вы являетесь администратором!*\nОткройте приложение для доступа к админ-панели.`;
+        }
+        
+        await ctx.reply(welcomeText, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                            web_app: { url: WEB_APP_URL }
+                        }
+                    ],
+                    [
+                        {
+                            text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
+                            url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!%20👇`
+                        }
+                    ]
+                ]
+            }
+        });
     }
 });
 
@@ -901,6 +945,42 @@ bot.command('app', (ctx) => {
             ]]
         }
     });
+});
+
+// Команда для админов
+bot.command('admin', async (ctx) => {
+    const userId = ctx.from.id;
+    
+    const userRole = await db.query(
+        `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
+        [userId]
+    );
+    
+    if (userRole.rows.length === 0 || (!userRole.rows[0].is_admin && !userRole.rows[0].is_super_admin)) {
+        return ctx.reply('⛔ У вас нет прав доступа к админ-панели.');
+    }
+    
+    ctx.reply(
+        `🛠️ *Админ-панель*\n\n` +
+        `Вы являетесь администратором бота.\n` +
+        `Для доступа к статистике и управлению откройте приложение.\n\n` +
+        `*Доступные функции:*\n` +
+        `📊 - Просмотр статистики\n` +
+        `👥 - Управление пользователями\n` +
+        `🔗 - Создание реферальных ссылок\n` +
+        `👑 - Назначение админов (только для главного админа)`,
+        {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[
+                    {
+                        text: '📱 ОТКРЫТЬ АДМИН-ПАНЕЛЬ',
+                        web_app: { url: WEB_APP_URL }
+                    }
+                ]]
+            }
+        }
+    );
 });
 
 // ========== СТАТИЧЕСКИЕ СТРАНИЦЫ ==========

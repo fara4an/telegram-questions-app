@@ -1120,3 +1120,237 @@ body {
     border-color: var(--tg-accent-color);
     transform: translateY(-2px);
 }
+
+/* Добавить в конец style.css */
+
+/* АДМИН-ПАНЕЛЬ */
+.admin-panel {
+    padding: 20px;
+}
+
+.admin-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--tg-border-color);
+}
+
+.admin-header h2 {
+    color: var(--tg-text-color);
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.admin-subtitle {
+    color: var(--tg-secondary-text);
+    font-size: 14px;
+}
+
+.admin-stats {
+    margin-bottom: 30px;
+}
+
+.admin-section {
+    background: var(--tg-secondary-bg);
+    border-radius: var(--tg-radius);
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--tg-border-color);
+}
+
+.admin-section h3 {
+    color: var(--tg-text-color);
+    margin-bottom: 15px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-section h3::before {
+    font-size: 20px;
+}
+
+.users-table-container {
+    overflow-x: auto;
+    margin-top: 15px;
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.users-table th {
+    background: var(--tg-input-bg);
+    color: var(--tg-secondary-text);
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--tg-border-color);
+}
+
+.users-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--tg-border-color);
+    color: var(--tg-text-color);
+}
+
+.users-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.users-table code {
+    background: rgba(46, 141, 230, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--tg-accent-color);
+}
+
+.make-admin-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.admin-input {
+    flex: 1;
+    padding: 12px 15px;
+    border: 1px solid var(--tg-border-color);
+    border-radius: 8px;
+    background: var(--tg-input-bg);
+    color: var(--tg-text-color);
+    font-size: 14px;
+}
+
+.admin-input:focus {
+    outline: none;
+    border-color: var(--tg-accent-color);
+}
+
+.referral-actions {
+    margin-bottom: 20px;
+}
+
+.referrals-list {
+    margin-top: 20px;
+}
+
+.referral-item {
+    background: var(--tg-input-bg);
+    border: 1px solid var(--tg-border-color);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.referral-code {
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.referral-link {
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+
+.referral-link code {
+    display: block;
+    word-break: break-all;
+    margin-top: 5px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.referral-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    color: var(--tg-secondary-text);
+    flex-wrap: wrap;
+}
+
+.referral-stats span {
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 30px;
+    justify-content: center;
+}
+
+.empty-message {
+    text-align: center;
+    color: var(--tg-secondary-text);
+    padding: 30px;
+    font-style: italic;
+}
+
+/* Адаптивность для админ-панели */
+@media (max-width: 768px) {
+    .users-table {
+        font-size: 12px;
+    }
+    
+    .users-table th,
+    .users-table td {
+        padding: 8px 10px;
+    }
+    
+    .make-admin-form {
+        flex-direction: column;
+    }
+    
+    .referral-stats {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .admin-actions {
+        flex-direction: column;
+    }
+}
+
+/* Добавить в секцию статистики на главной */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    background: var(--tg-secondary-bg);
+    padding: 15px;
+    border-radius: var(--tg-radius);
+    text-align: center;
+    border: 1px solid var(--tg-border-color);
+    transition: all 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tg-shadow);
+}
+
+.stat-number {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--tg-accent-color);
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--tg-secondary-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}

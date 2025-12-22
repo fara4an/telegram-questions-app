@@ -416,6 +416,91 @@
             </div>
         </div>
     </div>
+
+    <!-- Добавить в конец body в index.html -->
+<!-- Модалка ответа на вопрос -->
+<div id="answerModal" class="modal-overlay">
+    <div class="answer-modal">
+        <div class="modal-header">
+            <h3>
+                <span>💬</span>
+                Ответить на вопрос
+            </h3>
+            <button class="close-btn" onclick="closeAnswerModal()">×</button>
+        </div>
+        
+        <div class="question-preview">
+            <div class="question-label">
+                <span>❓</span>
+                Вопрос от анонима:
+            </div>
+            <div class="question-text-preview" id="previewQuestionText">
+                Загрузка вопроса...
+            </div>
+        </div>
+        
+        <div class="answer-form">
+            <div class="form-group">
+                <label class="form-label">Ваш ответ:</label>
+                <textarea 
+                    id="answerText" 
+                    class="answer-textarea"
+                    placeholder="Напишите ваш ответ здесь... Будьте вежливы и конструктивны!"
+                    maxlength="1000"
+                    rows="5"
+                ></textarea>
+                
+                <div class="char-counter">
+                    <span id="answerCharCount">0</span> / 1000 символов
+                    <span id="charLimitWarning" style="color: #ff9800; display: none;">
+                        ⚠️ Осталось мало символов
+                    </span>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" id="charProgressBar"></div>
+                </div>
+            </div>
+            
+            <div style="
+                background: rgba(46, 141, 230, 0.1);
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-left: 3px solid #2e8de6;
+            ">
+                <div style="display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="
+                        width: 28px;
+                        height: 28px;
+                        background: #2e8de6;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 14px;
+                        flex-shrink: 0;
+                    ">💡</div>
+                    <div style="font-size: 13px; color: #93c5fd;">
+                        <strong>Совет:</strong> После ответа вы сможете поделиться им в чате с ботом. 
+                        Ответ будет отправлен анонимно, но вы получите уведомление.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAnswerModal()">
+                Отмена
+            </button>
+            <button class="btn btn-primary" onclick="submitAnswer()">
+                <span>📤</span>
+                Отправить ответ
+            </button>
+        </div>
+    </div>
+</div>
     
     <script src="app.js"></script>
 </body>
