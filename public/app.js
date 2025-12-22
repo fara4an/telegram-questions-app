@@ -107,23 +107,31 @@ async function showTestData() {
     const testIncoming = [
         {
             id: 1,
-            text: "Тестовый вопрос 1?",
+            text: "Какой твой любимый фильм?",
+            answer: "Интерстеллар!",
+            is_answered: true,
+            created_at: new Date().toISOString(),
+            from_username: 'Аноним'
+        },
+        {
+            id: 2,
+            text: "Что посоветуешь для новичка в программировании?",
             answer: null,
             is_answered: false,
-            created_at: new Date().toISOString(),
+            created_at: new Date(Date.now() - 86400000).toISOString(),
             from_username: 'Аноним'
         }
     ];
     
     const testSent = [
         {
-            id: 2,
-            text: "Тестовый отправленный вопрос?",
-            answer: "Тестовый ответ",
+            id: 3,
+            text: "Какая твоя любимая книга?",
+            answer: "1984 Джорджа Оруэлла",
             is_answered: true,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
+            created_at: new Date(Date.now() - 172800000).toISOString(),
             to_user_id: 123456,
-            to_username: 'test_user'
+            to_username: 'friend_user'
         }
     ];
     
@@ -132,10 +140,10 @@ async function showTestData() {
     updateBadge('incoming', testIncoming.length);
     updateBadge('sent', testSent.length);
     
-    setText('statTotal', '2');
-    setText('statReceived', '1');
+    setText('statTotal', '3');
+    setText('statReceived', '2');
     setText('statSent', '1');
-    setText('statAnswered', '1');
+    setText('statAnswered', '2');
 }
 
 async function loadIncomingQuestions() {
@@ -201,7 +209,7 @@ async function loadStats() {
     }
 }
 
-// ========== РЕНДЕРИНГ ==========
+// ========== РЕНДЕРИНГ ВОПРОСОВ ==========
 
 function renderIncomingQuestions(questions) {
     const container = getElement('incoming-list');
@@ -226,18 +234,18 @@ function renderIncomingQuestions(questions) {
             <div class="question-meta">
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
-                    ${q.from_username ? `@${q.from_username}` : 'Аноним'}
+                    ${q.from_username ? `@${q.from_username}` : '👤 Аноним'}
                 </div>
             </div>
             <div class="question-text">${escapeHtml(q.text)}</div>
             ${q.is_answered ? `
                 <div class="answer-bubble">
-                    <strong>Ваш ответ:</strong>
-                    <div>${escapeHtml(q.answer)}</div>
+                    <strong>📝 Ваш ответ:</strong>
+                    <div class="answer-content">${escapeHtml(q.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-primary" onclick="openShareModal(${q.id})">
-                        📤 Поделиться в чат
+                    <button class="btn btn-primary" onclick="shareAnswer(${q.id})">
+                        📤 Поделиться ответом
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
                         🗑️ Удалить
@@ -279,19 +287,14 @@ function renderSentQuestions(questions) {
             <div class="question-meta">
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
-                    Кому: ${q.to_username ? `@${q.to_username}` : `ID ${q.to_user_id}`}
+                    👤 Кому: ${q.to_username ? `@${q.to_username}` : `ID ${q.to_user_id}`}
                 </div>
             </div>
             <div class="question-text">${escapeHtml(q.text)}</div>
             ${q.is_answered ? `
                 <div class="answer-bubble">
-                    <strong>Ответ:</strong>
-                    <div>${escapeHtml(q.answer)}</div>
-                </div>
-                <div class="btn-group">
-                    <button class="btn btn-primary" onclick="openShareModal(${q.id})">
-                        📤 Поделиться в чат
-                    </button>
+                    <strong>💬 Ответ:</strong>
+                    <div class="answer-content">${escapeHtml(q.answer)}</div>
                 </div>
             ` : `
                 <div class="btn-group">
@@ -306,123 +309,60 @@ function renderSentQuestions(questions) {
     container.innerHTML = html;
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+// ========== ШЕРИНГ ОТВЕТА ==========
 
-function setupTabs() {
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const tabId = this.getAttribute('data-tab');
-            
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            
-            this.classList.add('active');
-            const page = getElement(`content-${tabId}`);
-            if (page) page.classList.add('active');
-            
-            document.querySelector('.tab-content').scrollTop = 0;
-        });
-    });
-}
-
-function updateBadge(type, count) {
-    const badge = getElement(`${type}Badge`);
-    if (badge) {
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.style.display = 'flex';
-        } else {
-            badge.style.display = 'none';
-        }
-    }
-}
-
-function updateStatus(status) {
-    const statusElement = getElement('statusText');
-    if (statusElement) {
-        statusElement.textContent = status;
-        
-        if (status.includes('🟢') || status.includes('✅')) {
-            statusElement.innerHTML = '<span class="status-dot"></span> ' + status;
-        } else if (status.includes('🔴') || status.includes('❌')) {
-            statusElement.innerHTML = '<span class="status-dot error"></span> ' + status;
-        } else if (status.includes('🟡') || status.includes('⚠️')) {
-            statusElement.innerHTML = '<span class="status-dot loading"></span> ' + status;
-        }
-    }
-}
-
-function formatDate(dateString) {
+async function shareAnswer(questionId) {
     try {
-        const date = new Date(dateString);
-        const now = new Date();
+        showNotification('🎨 Генерируем картинку и отправляем в чат...', 'info');
         
-        if (date.toDateString() === now.toDateString()) {
-            return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const response = await fetch('/api/share-to-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,
+                questionId: questionId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка сервера');
         }
         
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (date.toDateString() === yesterday.toDateString()) {
-            return 'вчера';
-        }
+        const data = await response.json();
         
-        const diff = now - date;
-        if (diff < 7 * 86400000) {
-            const days = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
-            return days[date.getDay()];
-        }
-        
-        return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-        
-    } catch {
-        return 'недавно';
-    }
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showNotification(message, type = 'info', duration = 3000) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    
-    const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
-    
-    notification.innerHTML = `
-        <div class="notification-icon">${icons[type] || '💡'}</div>
-        <div>${message}</div>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    if (duration > 0) {
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
+        showNotificationWithAction(
+            '✅ Ответ отправлен в ваш чат с ботом!',
+            'success',
+            '📱 Открыть чат',
+            () => {
+                if (tg && tg.openLink) {
+                    tg.openLink(`https://t.me/${botUsername}`);
+                } else {
+                    window.open(`https://t.me/${botUsername}`, '_blank');
+                }
             }
-        }, duration);
+        );
+        
+    } catch (error) {
+        console.error('❌ Ошибка шеринга:', error);
+        showNotification(`❌ ${error.message}`, 'error', 5000);
     }
 }
 
-// ========== КРАСИВАЯ МОДАЛКА ОТВЕТА ==========
+// ========== ОТВЕТ НА ВОПРОС ==========
 
 function openAnswerModal(questionId) {
     currentQuestionId = questionId;
     const modal = getElement('answerModal');
     
-    // Получаем текст вопроса для превью
+    // Получаем текст вопроса
     fetch(`/api/question/${questionId}`)
         .then(response => response.json())
         .then(question => {
             const previewElement = getElement('previewQuestionText');
             if (previewElement) {
-                previewElement.textContent = question.text.length > 120 ? 
-                    question.text.substring(0, 120) + '...' : question.text;
+                previewElement.textContent = question.text;
             }
         })
         .catch(error => {
@@ -436,7 +376,6 @@ function openAnswerModal(questionId) {
     const warning = getElement('charLimitWarning');
     
     if (answerText && charCount && progressBar && warning) {
-        // Очищаем поле при открытии
         answerText.value = '';
         charCount.textContent = '0';
         progressBar.style.width = '0%';
@@ -446,11 +385,9 @@ function openAnswerModal(questionId) {
             const length = this.value.length;
             charCount.textContent = length;
             
-            // Обновляем прогресс-бар
             const percentage = (length / 1000) * 100;
             progressBar.style.width = `${Math.min(percentage, 100)}%`;
             
-            // Меняем цвет при приближении к лимиту
             if (length > 900) {
                 progressBar.style.background = 'linear-gradient(90deg, #FF9800 0%, #FF5722 100%)';
                 warning.style.display = 'inline';
@@ -462,7 +399,6 @@ function openAnswerModal(questionId) {
                 warning.style.display = 'none';
             }
             
-            // Блокируем ввод при превышении лимита
             if (length > 1000) {
                 this.value = this.value.substring(0, 1000);
                 charCount.textContent = '1000';
@@ -472,7 +408,6 @@ function openAnswerModal(questionId) {
             }
         });
         
-        // Фокус на поле ввода
         setTimeout(() => answerText.focus(), 300);
     }
     
@@ -526,53 +461,125 @@ async function submitAnswer() {
     }
 }
 
-// ========== ПРОСТОЙ ШЕРИНГ В ЧАТ ==========
+// ========== УДАЛЕНИЕ ВОПРОСА ==========
 
-async function openShareModal(questionId) {
+async function deleteQuestion(questionId) {
+    if (!confirm('Удалить вопрос? Это действие нельзя отменить.')) return;
+    
     try {
-        showNotification('🎨 Отправляем ответ в ваш чат с ботом...', 'info');
+        showNotification('🗑️ Удаление...', 'info');
         
-        const response = await fetch('/api/share-to-chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: userId,
-                questionId: questionId
-            })
+        const response = await fetch(`/api/questions/${questionId}`, {
+            method: 'DELETE'
         });
         
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Ошибка сервера');
-        }
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Красивое уведомление об успехе
-            showNotificationWithAction(
-                '✅ Ответ отправлен в ваш чат с ботом!',
-                'success',
-                '📱 Открыть чат',
-                () => {
-                    if (tg && tg.openLink) {
-                        tg.openLink(`https://t.me/${botUsername}`);
-                    } else {
-                        window.open(`https://t.me/${botUsername}`, '_blank');
-                    }
-                }
-            );
+        if (response.ok) {
+            showNotification('✅ Вопрос удален', 'success');
+            await loadAllData();
         } else {
-            throw new Error(data.message || 'Неизвестная ошибка');
+            throw new Error('Ошибка сервера');
         }
-        
     } catch (error) {
-        console.error('❌ Ошибка шеринга:', error);
-        showNotification(`❌ ${error.message}`, 'error', 5000);
+        console.error('Ошибка удаления:', error);
+        showNotification('❌ Не удалось удалить вопрос', 'error');
     }
 }
 
-// Новая функция для уведомлений с кнопкой действия
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+
+function setupTabs() {
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('data-tab');
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            
+            this.classList.add('active');
+            const page = getElement(`content-${tabId}`);
+            if (page) page.classList.add('active');
+            
+            document.querySelector('.tab-content').scrollTop = 0;
+        });
+    });
+}
+
+function updateBadge(type, count) {
+    const badge = getElement(`${type}Badge`);
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+function updateStatus(status) {
+    const statusElement = getElement('statusText');
+    if (statusElement) {
+        statusElement.textContent = status;
+    }
+}
+
+function formatDate(dateString) {
+    try {
+        const date = new Date(dateString);
+        const now = new Date();
+        
+        if (date.toDateString() === now.toDateString()) {
+            return 'Сегодня ' + date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (date.toDateString() === yesterday.toDateString()) {
+            return 'Вчера';
+        }
+        
+        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+        if (diffDays < 7) {
+            const days = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
+            return days[date.getDay()];
+        }
+        
+        return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        
+    } catch {
+        return 'недавно';
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showNotification(message, type = 'info', duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
+    
+    notification.innerHTML = `
+        <div class="notification-icon">${icons[type] || '💡'}</div>
+        <div>${message}</div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    if (duration > 0) {
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, duration);
+    }
+}
+
 function showNotificationWithAction(message, type, actionText, actionCallback) {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
@@ -611,37 +618,14 @@ function showNotificationWithAction(message, type, actionText, actionCallback) {
     }, 8000);
 }
 
-// Удаление вопроса
-async function deleteQuestion(questionId) {
-    if (!confirm('Удалить вопрос?')) return;
-    
-    try {
-        showNotification('🗑️ Удаление...', 'info');
-        
-        const response = await fetch(`/api/questions/${questionId}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.ok) {
-            showNotification('✅ Вопрос удален', 'success');
-            await loadAllData();
-        } else {
-            throw new Error('Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка удаления:', error);
-        showNotification('❌ Не удалось удалить вопрос', 'error');
-    }
-}
-
 function shareProfileToTelegram() {
     const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
     
     if (tg && tg.openTelegramLink) {
-        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос! 👇')}`;
         tg.openTelegramLink(shareUrl);
     } else {
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`, '_blank');
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос! 👇')}`, '_blank');
     }
 }
 
@@ -657,6 +641,6 @@ window.shareProfileToTelegram = shareProfileToTelegram;
 window.openAnswerModal = openAnswerModal;
 window.closeAnswerModal = closeAnswerModal;
 window.submitAnswer = submitAnswer;
-window.openShareModal = openShareModal;
+window.shareAnswer = shareAnswer;
 window.deleteQuestion = deleteQuestion;
 window.showNotificationWithAction = showNotificationWithAction;

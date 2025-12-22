@@ -6,6 +6,218 @@
     <title>💬 Анонимные вопросы</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Дополнительные стили для красивой модалки ответа */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 15, 15, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .answer-modal {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid #3d3d3d;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #2e8de6 0%, #1a7cd6 100%);
+            padding: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .modal-header .close-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .modal-header .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+        
+        .question-preview {
+            background: rgba(46, 141, 230, 0.1);
+            border: 1px solid rgba(46, 141, 230, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 25px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .question-preview::before {
+            content: '❓';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 40px;
+            opacity: 0.2;
+        }
+        
+        .question-label {
+            color: #93c5fd;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .question-text-preview {
+            color: #e2e8f0;
+            font-size: 16px;
+            line-height: 1.5;
+            font-style: italic;
+        }
+        
+        .answer-form {
+            padding: 0 25px 25px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-label {
+            display: block;
+            color: #e2e8f0;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-label::before {
+            content: '✍️';
+            font-size: 20px;
+        }
+        
+        .answer-textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid #3d3d3d;
+            border-radius: 12px;
+            color: #e2e8f0;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            line-height: 1.5;
+            transition: all 0.3s;
+        }
+        
+        .answer-textarea:focus {
+            outline: none;
+            border-color: #2e8de6;
+            background: rgba(46, 141, 230, 0.05);
+            box-shadow: 0 0 0 3px rgba(46, 141, 230, 0.1);
+        }
+        
+        .char-counter {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+        
+        .progress-bar {
+            height: 4px;
+            background: #3d3d3d;
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            transition: width 0.3s, background 0.3s;
+        }
+        
+        .modal-footer {
+            padding: 20px 25px;
+            border-top: 1px solid #3d3d3d;
+            display: flex;
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-secondary {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #3d3d3d;
+            color: #e2e8f0;
+        }
+        
+        .btn-primary {
+            flex: 1;
+            background: linear-gradient(135deg, #2e8de6 0%, #1a7cd6 100%);
+            border: none;
+            color: white;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -68,8 +280,6 @@
                         <p><strong>Статус:</strong> <span style="color: var(--tg-accent-color);">Активен</span></p>
                     </div>
                     
-                    <!-- УБРАН БЛОК SHARE-SECTION ИЗ ПРОФИЛЯ -->
-                    
                     <!-- ШЕРИНГ СВОЕГО ПРОФИЛЯ -->
                     <div class="share-profile-section" style="margin-top: 30px;">
                         <h3 style="margin-bottom: 15px; color: var(--tg-text-color); display: flex; align-items: center; gap: 10px;">
@@ -123,341 +333,90 @@
         </div>
     </div>
     
-    <div id="answerModal" class="modal">
-    <div class="modal-content" style="max-width: 500px; border-radius: 16px; overflow: hidden;">
-        <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-            <h3 style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                <span style="font-size: 24px;">💬</span>
-                <span>Ответить на вопрос</span>
-            </h3>
-            <button class="btn-close" onclick="closeAnswerModal()" style="color: white;">×</button>
-        </div>
-        <div class="modal-body" style="padding: 25px;">
-            <!-- Красивое оформление вопроса -->
-            <div id="questionPreview" style="
-                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                border-radius: 12px;
-                padding: 20px;
-                margin-bottom: 25px;
-                border-left: 5px solid #667eea;
-                position: relative;
-            ">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                    <div style="
-                        width: 40px;
-                        height: 40px;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: white;
-                        font-weight: bold;
-                        font-size: 18px;
-                    ">❓</div>
-                    <div>
-                        <div style="font-size: 14px; color: #666; margin-bottom: 2px;">Вопрос от анонима:</div>
-                        <div style="font-size: 16px; font-weight: 500; color: #333;" id="previewQuestionText"></div>
-                    </div>
+    <!-- КРАСИВАЯ МОДАЛКА ОТВЕТА -->
+    <div id="answerModal" class="modal-overlay">
+        <div class="answer-modal">
+            <div class="modal-header">
+                <h3>
+                    <span>💬</span>
+                    Ответить на вопрос
+                </h3>
+                <button class="close-btn" onclick="closeAnswerModal()">×</button>
+            </div>
+            
+            <div class="question-preview">
+                <div class="question-label">
+                    <span>❓</span>
+                    Вопрос от анонима:
+                </div>
+                <div class="question-text-preview" id="previewQuestionText">
+                    Загрузка вопроса...
                 </div>
             </div>
             
-            <!-- Красивое поле для ответа -->
-            <div style="margin-bottom: 20px;">
-                <label style="
-                    display: block;
-                    margin-bottom: 12px;
-                    font-weight: 600;
-                    color: #333;
-                    font-size: 15px;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                ">
-                    <span style="
-                        width: 32px;
-                        height: 32px;
-                        background: linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: white;
-                        font-size: 16px;
-                    ">✍️</span>
-                    Ваш ответ:
-                </label>
-                
-                <textarea 
-                    id="answerText" 
-                    placeholder="Напишите ваш ответ здесь... Будьте вежливы и конструктивны!"
-                    rows="6"
-                    maxlength="1000"
-                    style="
-                        width: 100%;
-                        padding: 18px;
-                        border: 2px solid #e0e0e0;
-                        border-radius: 12px;
-                        font-size: 15px;
-                        font-family: inherit;
-                        resize: vertical;
-                        background: #fafafa;
-                        color: #333;
-                        transition: all 0.3s;
-                        line-height: 1.5;
-                    "
-                    onfocus="this.style.borderColor='#667eea'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)';"
-                    onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none';"
-                ></textarea>
-                
-                <!-- Счетчик символов с прогресс-баром -->
-                <div style="margin-top: 12px;">
-                    <div style="
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 6px;
-                        font-size: 13px;
-                        color: #666;
-                    ">
+            <div class="answer-form">
+                <div class="form-group">
+                    <label class="form-label">Ваш ответ:</label>
+                    <textarea 
+                        id="answerText" 
+                        class="answer-textarea"
+                        placeholder="Напишите ваш ответ здесь... Будьте вежливы и конструктивны!"
+                        maxlength="1000"
+                        rows="5"
+                    ></textarea>
+                    
+                    <div class="char-counter">
                         <span id="answerCharCount">0</span> / 1000 символов
                         <span id="charLimitWarning" style="color: #ff9800; display: none;">
                             ⚠️ Осталось мало символов
                         </span>
                     </div>
-                    <div style="
-                        height: 4px;
-                        background: #e0e0e0;
-                        border-radius: 2px;
-                        overflow: hidden;
-                    ">
-                        <div id="charProgressBar" style="
-                            height: 100%;
-                            width: 0%;
-                            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
-                            transition: width 0.3s;
-                        "></div>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="charProgressBar"></div>
+                    </div>
+                </div>
+                
+                <div style="
+                    background: rgba(46, 141, 230, 0.1);
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin-bottom: 20px;
+                    border-left: 3px solid #2e8de6;
+                ">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <div style="
+                            width: 28px;
+                            height: 28px;
+                            background: #2e8de6;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 14px;
+                            flex-shrink: 0;
+                        ">💡</div>
+                        <div style="font-size: 13px; color: #93c5fd;">
+                            <strong>Совет:</strong> После ответа вы сможете поделиться им в чате с ботом. 
+                            Ответ будет отправлен анонимно, но вы получите уведомление.
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Подсказки -->
-            <div style="
-                background: #e8f4fd;
-                border-radius: 10px;
-                padding: 15px;
-                margin-bottom: 20px;
-                border-left: 4px solid #2196F3;
-            ">
-                <div style="display: flex; align-items: flex-start; gap: 10px;">
-                    <div style="
-                        width: 28px;
-                        height: 28px;
-                        background: #2196F3;
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: white;
-                        font-size: 14px;
-                        flex-shrink: 0;
-                    ">💡</div>
-                    <div style="font-size: 13px; color: #2c5282;">
-                        <strong>Совет:</strong> После ответа вы сможете поделиться им в чате с ботом. 
-                        Ответ будет отправлен анонимно, но вы получите уведомление.
-                    </div>
-                </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAnswerModal()">
+                    Отмена
+                </button>
+                <button class="btn btn-primary" onclick="submitAnswer()">
+                    <span>📤</span>
+                    Отправить ответ
+                </button>
             </div>
-        </div>
-        <div class="modal-footer" style="
-            padding: 20px 25px;
-            border-top: 1px solid #e0e0e0;
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-            background: #fafafa;
-        ">
-            <button onclick="closeAnswerModal()" style="
-                padding: 12px 24px;
-                border: 2px solid #e0e0e0;
-                border-radius: 10px;
-                background: white;
-                color: #666;
-                font-weight: 600;
-                font-size: 15px;
-                cursor: pointer;
-                transition: all 0.3s;
-                min-width: 100px;
-            " onmouseover="this.style.borderColor='#ccc'; this.style.color='#333';"
-               onmouseout="this.style.borderColor='#e0e0e0'; this.style.color='#666';">
-                Отмена
-            </button>
-            <button onclick="submitAnswer()" style="
-                padding: 12px 24px;
-                border: none;
-                border-radius: 10px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                font-weight: 600;
-                font-size: 15px;
-                cursor: pointer;
-                transition: all 0.3s;
-                min-width: 140px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';"
-               onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                <span>📤</span>
-                <span>Отправить ответ</span>
-            </button>
         </div>
     </div>
-</div>
-            
-            // Удаляем старую модалку если есть
-            const oldModal = document.getElementById('shareChoiceModal');
-            if (oldModal) oldModal.remove();
-            
-            // Добавляем новую модалку
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            
-        } catch (error) {
-            console.error('Ошибка открытия модалки:', error);
-            showNotification('Ошибка загрузки модалки', 'error');
-        }
-    }
     
-    function closeShareChoiceModal() {
-        const modal = document.getElementById('shareChoiceModal');
-        if (modal) modal.remove();
-    }
-    
-    // Шеринг в историю
-    async function shareToTelegramStory(questionId) {
-        try {
-            closeShareChoiceModal();
-            showNotification('🖼️ Отправляем в историю...', 'info');
-            
-            // 1. Генерируем картинку
-            const imageResponse = await fetch(`/api/generate-image/${questionId}`);
-            let imageBlob;
-            
-            if (imageResponse.ok) {
-                imageBlob = await imageResponse.blob();
-            } else {
-                // Если API не работает, создаем простую картинку
-                imageBlob = await createSimpleImage();
-            }
-            
-            // 2. Конвертируем в base64 для Telegram
-            const base64Image = await blobToBase64(imageBlob);
-            
-            // 3. Отправляем через API бота
-            const shareResponse = await fetch('/api/share-via-bot', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    userId: userId,
-                    questionId: questionId,
-                    type: 'story'
-                })
-            });
-            
-            if (shareResponse.ok) {
-                // 4. Предлагаем скачать картинку локально
-                const url = URL.createObjectURL(imageBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `ответ-на-вопрос-${questionId}.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                showNotification('✅ Картинка скачана! Ответ отправлен через бота.', 'success');
-            } else {
-                throw new Error('Ошибка отправки через бота');
-            }
-            
-        } catch (error) {
-            console.error('Ошибка шеринга в историю:', error);
-            showNotification('Не удалось отправить в историю', 'error');
-        }
-    }
-    
-    // Шеринг в чат
-    async function shareToTelegramChat(questionId) {
-        try {
-            closeShareChoiceModal();
-            showNotification('💬 Отправляем в чат...', 'info');
-            
-            // Отправляем через API бота
-            const shareResponse = await fetch('/api/share-via-bot', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    userId: userId,
-                    questionId: questionId,
-                    type: 'chat'
-                })
-            });
-            
-            if (shareResponse.ok) {
-                showNotification('✅ Ответ отправлен в чат через бота!', 'success');
-            } else {
-                throw new Error('Ошибка отправки через бота');
-            }
-            
-        } catch (error) {
-            console.error('Ошибка шеринга в чат:', error);
-            showNotification('Не удалось отправить в чат', 'error');
-        }
-    }
-    
-    // Вспомогательные функции
-    async function createSimpleImage() {
-        return new Promise((resolve) => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = 800;
-            canvas.height = 400;
-            
-            // Простой фон
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, 800, 400);
-            
-            // Текст
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 24px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('💬 Ответ на анонимный вопрос!', 400, 150);
-            
-            ctx.font = '18px Arial';
-            ctx.fillText('Задай мне вопрос:', 400, 200);
-            
-            ctx.font = '16px Arial';
-            ctx.fillStyle = '#2e8de6';
-            ctx.fillText('t.me/dota2servicebot', 400, 250);
-            
-            canvas.toBlob(resolve, 'image/png');
-        });
-    }
-    
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-</script>
+    <script src="app.js"></script>
 </body>
 </html>
