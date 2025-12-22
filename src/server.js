@@ -122,6 +122,73 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // ========== API ROUTES ==========
 
+// В server.js в разделе API ROUTES добавим:
+// ========== ШЕРИНГ ЧЕРЕЗ БОТА ==========
+app.post('/api/share-via-bot', async (req, res) => {
+    try {
+        const { userId, questionId, chatId, type } = req.body; // type: 'story' или 'chat'
+        
+        if (!userId || !questionId) {
+            return res.status(400).json({ error: 'Не указаны параметры' });
+        }
+        
+        // Получаем данные вопроса
+        const questionResult = await db.query(
+            `SELECT q.*, u.username as from_username 
+             FROM questions q
+             LEFT JOIN users u ON q.from_user_id = u.telegram_id
+             WHERE q.id = $1`,
+            [questionId]
+        );
+        
+        if (questionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Question not found' });
+        }
+        
+        const question = questionResult.rows[0];
+        const userLink = `https://t.me/${bot.botInfo.username}?start=ask_${userId}`;
+        
+        let message = '';
+        if (type === 'story') {
+            // Для истории
+            message = `💬 Ответ на анонимный вопрос!\n\n"${question.text.substring(0, 100)}${question.text.length > 100 ? '...' : ''}"\n\n${question.answer ? `💡 Ответ: "${question.answer.substring(0, 80)}..."` : 'Посмотри ответ в приложении!'}\n\n👇 Задай и мне вопрос!`;
+        } else {
+            // Для чата
+            message = `💬 *Ответ на анонимный вопрос!*\n\n` +
+                     `📝 *Вопрос:* ${question.text.substring(0, 150)}${question.text.length > 150 ? '...' : ''}\n\n` +
+                     `💡 *Ответ:* ${question.answer ? question.answer.substring(0, 150) + (question.answer.length > 150 ? '...' : '') : 'Смотри в приложении'}\n\n` +
+                     `👇 *Задай и мне вопрос:*\n${userLink}`;
+        }
+        
+        // Отправляем сообщение через бота
+        await bot.telegram.sendMessage(
+            chatId || userId, // Если нет chatId, шлём самому пользователю
+            message,
+            {
+                parse_mode: type === 'story' ? null : 'Markdown',
+                reply_markup: type === 'story' ? undefined : {
+                    inline_keyboard: [[
+                        {
+                            text: '✍️ Задать вопрос',
+                            url: userLink
+                        }
+                    ]]
+                }
+            }
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Отправлено через бота',
+            type: type 
+        });
+        
+    } catch (error) {
+        console.error('Error sharing via bot:', error);
+        res.status(500).json({ error: 'Sharing failed' });
+    }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ 

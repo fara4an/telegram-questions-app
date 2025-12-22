@@ -1113,3 +1113,10 @@ body {
     background: rgba(229, 57, 53, 0.1);
     border: 1px solid rgba(229, 57, 53, 0.3);
 }
+
+/* Добавить в style.css */
+.share-option-btn:hover {
+    background: #2d2d2d;
+    border-color: var(--tg-accent-color);
+    transform: translateY(-2px);
+}
