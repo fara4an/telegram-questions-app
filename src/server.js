@@ -6,11 +6,11 @@ const { Client } = require('pg');
 const cors = require('cors');
 const { createCanvas } = require('canvas');
 const crypto = require('crypto');
-const fs = require('fs');
 
 const app = express();
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://ваш-проект.onrender.com';
+let BOT_USERNAME = process.env.BOT_USERNAME || null; // опционально через env
 
 // ========== БАЗА ДАННЫХ ==========
 const db = new Client({
@@ -45,8 +45,7 @@ async function initDB() {
             CREATE TABLE IF NOT EXISTS question_images (
                 id SERIAL PRIMARY KEY,
                 question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                image_filename VARCHAR(255) UNIQUE NOT NULL,
-                image_url TEXT NOT NULL,
+                image_base64 TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(question_id)
             );
@@ -66,7 +65,6 @@ async function initDB() {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ========== ГЕНЕРАЦИЯ И СОХРАНЕНИЕ КАРТИНКИ ==========
 app.get('/api/share-image/:questionId', async (req, res) => {
@@ -75,7 +73,7 @@ app.get('/api/share-image/:questionId', async (req, res) => {
         
         // 1. Проверяем, есть ли уже картинка в БД
         const existingImage = await db.query(
-            `SELECT qi.image_url, qi.image_filename 
+            `SELECT qi.image_base64 
              FROM question_images qi 
              WHERE qi.question_id = $1`,
             [questionId]
@@ -86,8 +84,7 @@ app.get('/api/share-image/:questionId', async (req, res) => {
             console.log(`✅ Картинка из кэша для вопроса ${questionId}`);
             return res.json({
                 success: true,
-                imageUrl: existingImage.rows[0].image_url,
-                filename: existingImage.rows[0].image_filename,
+                imageBase64: existingImage.rows[0].image_base64,
                 cached: true
             });
         }
@@ -109,36 +106,21 @@ app.get('/api/share-image/:questionId', async (req, res) => {
         
         // 4. Генерируем картинку
         const imageBuffer = await generateChatImage(question);
+        const imageBase64 = imageBuffer.toString('base64');
         
-        // 5. Сохраняем картинку локально и в БД
-        const filename = `question_${questionId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.png`;
-        const filePath = path.join(__dirname, '../uploads', filename);
-        const imageUrl = `${WEB_APP_URL}/uploads/${filename}`;
-        
-        // Создаем папку uploads если её нет
-        const uploadsDir = path.join(__dirname, '../uploads');
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        
-        // Сохраняем файл
-        fs.writeFileSync(filePath, imageBuffer);
-        console.log(`💾 Картинка сохранена: ${filePath}`);
-        
-        // 6. Сохраняем в БД
+        // 5. Сохраняем в БД как Base64
         await db.query(
-            `INSERT INTO question_images (question_id, image_filename, image_url) 
-             VALUES ($1, $2, $3)`,
-            [questionId, filename, imageUrl]
+            `INSERT INTO question_images (question_id, image_base64) 
+             VALUES ($1, $2)`,
+            [questionId, imageBase64]
         );
         
-        console.log(`✅ Картинка сохранена в БД для вопроса ${questionId}`);
+        console.log(`✅ Картинка сохранена в БД как Base64 для вопроса ${questionId}`);
         
-        // 7. Возвращаем результат
+        // 6. Возвращаем результат
         res.json({
             success: true,
-            imageUrl: imageUrl,
-            filename: filename,
+            imageBase64: imageBase64,
             cached: false
         });
         
@@ -148,268 +130,235 @@ app.get('/api/share-image/:questionId', async (req, res) => {
     }
 });
 
-// ========== ШЕРИНГ КАРТИНКИ В ЧАТ ЧЕРЕЗ БОТА ==========
 app.post('/api/share-to-chat', async (req, res) => {
-    try {
-        const { userId, questionId } = req.body;
-        
-        if (!userId || !questionId) {
-            return res.status(400).json({ error: 'Не указаны параметры' });
-        }
-        
-        console.log(`🔄 Шеринг вопроса ${questionId} для пользователя ${userId}`);
-        
-        // 1. Получаем или создаем картинку
-        const imageResult = await db.query(
-            `SELECT qi.image_url, qi.image_filename 
-             FROM question_images qi 
-             WHERE qi.question_id = $1`,
-            [questionId]
-        );
-        
-        let imageUrl;
-        
-        // Если картинки нет в БД - генерируем и сохраняем
-        if (imageResult.rows.length === 0) {
-            // Получаем вопрос
-            const questionResult = await db.query(
-                `SELECT q.*, u.username as from_username 
-                 FROM questions q
-                 LEFT JOIN users u ON q.from_user_id = u.telegram_id
-                 WHERE q.id = $1`,
-                [questionId]
-            );
-            
-            if (questionResult.rows.length === 0) {
-                return res.status(404).json({ error: 'Question not found' });
-            }
-            
-            const question = questionResult.rows[0];
-            
-            // Генерируем картинку
-            const imageBuffer = await generateChatImage(question);
-            
-            // Сохраняем картинку
-            const filename = `question_${questionId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.png`;
-            const filePath = path.join(__dirname, '../uploads', filename);
-            imageUrl = `${WEB_APP_URL}/uploads/${filename}`;
-            
-            // Создаем папку uploads если её нет
-            const uploadsDir = path.join(__dirname, '../uploads');
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
-            }
-            
-            fs.writeFileSync(filePath, imageBuffer);
-            
-            // Сохраняем в БД
-            await db.query(
-                `INSERT INTO question_images (question_id, image_filename, image_url) 
-                 VALUES ($1, $2, $3)`,
-                [questionId, filename, imageUrl]
-            );
-            
-            console.log(`✅ Картинка сгенерирована и сохранена: ${imageUrl}`);
-        } else {
-            imageUrl = imageResult.rows[0].image_url;
-            console.log(`✅ Картинка из кэша: ${imageUrl}`);
-        }
-        
-        // 2. Получаем данные вопроса для текста
-        const questionResult = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.id = $1`,
-            [questionId]
-        );
-        
-        if (questionResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Question not found' });
-        }
-        
-        const question = questionResult.rows[0];
-        
-        // 3. Формируем текст сообщения (упрощённый, без Markdown)
-        const userLink = `https://t.me/${bot.botInfo.username}?start=ask_${userId}`;
-        const questionText = question.text.length > 80 ? 
-            question.text.substring(0, 80) + '...' : question.text;
-        
-        let messageText = `💬 Ответил на анонимный вопрос!\n\n`;
-        messageText += `📝 Вопрос: ${questionText}\n\n`;
-        
-        if (question.answer) {
-            const answerText = question.answer.length > 100 ? 
-                question.answer.substring(0, 100) + '...' : question.answer;
-            messageText += `💡 Мой ответ: ${answerText}\n\n`;
-        }
-        
-        messageText += `👇 Задай и мне анонимный вопрос!\n`;
-        messageText += `${userLink}`;
-        
-        // 4. Отправляем картинку через бота
-        try {
-            // Пробуем отправить фото по URL
-            await bot.telegram.sendPhoto(userId, imageUrl, {
-                caption: messageText,
-                reply_markup: {
-                    inline_keyboard: [[
-                        {
-                            text: '✍️ Задать мне вопрос',
-                            url: userLink
-                        }
-                    ]]
-                }
-            });
-            
-            console.log(`✅ Картинка отправлена пользователю ${userId}`);
-            
-            res.json({
-                success: true,
-                message: 'Картинка отправлена в ваш чат с ботом!',
-                imageUrl: imageUrl
-            });
-            
-        } catch (telegramError) {
-            console.error('❌ Ошибка отправки фото через Telegram:', telegramError.message);
-            
-            // Если не удалось отправить фото, отправляем просто текст
-            await bot.telegram.sendMessage(
-                userId,
-                messageText,
-                {
-                    reply_markup: {
-                        inline_keyboard: [[
-                            {
-                                text: '✍️ Задать мне вопрос',
-                                url: userLink
-                            }
-                        ]]
-                    }
-                }
-            );
-            
-            res.json({
-                success: true,
-                message: 'Текст отправлен в чат',
-                warning: 'Картинка не загрузилась, но текст отправлен'
-            });
-        }
-        
-    } catch (error) {
-        console.error('❌ Ошибка шеринга:', error);
-        res.status(500).json({ error: 'Failed to share image' });
+  try {
+    const { userId, questionId } = req.body;
+    if (!userId || !questionId) {
+      return res.status(400).json({ error: 'Не указаны параметры' });
     }
+
+    // 1) Получаем вопрос и проверяем владельца
+    const qRes = await db.query(
+      `SELECT q.*, u.username as from_username 
+       FROM questions q
+       LEFT JOIN users u ON q.from_user_id = u.telegram_id
+       WHERE q.id = $1`,
+      [questionId]
+    );
+    if (qRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+    const question = qRes.rows[0];
+    if (String(question.to_user_id) !== String(userId)) {
+      return res.status(403).json({ error: 'Нет доступа к этому вопросу' });
+    }
+
+    // 2) Берём картинку из кэша или генерируем
+    let imageBase64;
+    const imgRes = await db.query(
+      `SELECT image_base64 FROM question_images WHERE question_id = $1`,
+      [questionId]
+    );
+    if (imgRes.rows.length > 0) {
+      imageBase64 = imgRes.rows[0].image_base64;
+    } else {
+      const buf = await generateChatImage(question);
+      imageBase64 = buf.toString('base64');
+      await db.query(
+        `INSERT INTO question_images (question_id, image_base64) VALUES ($1, $2)`,
+        [questionId, imageBase64]
+      );
+    }
+
+    // 3) Текст + кнопка
+    const username = BOT_USERNAME || (bot.botInfo && bot.botInfo.username) || 'your_bot';
+    const userLink = `https://t.me/${username}?start=ask_${userId}`;
+
+    const qShort = question.text.length > 100 ? question.text.slice(0, 100) + '…' : question.text;
+    const aShort = question.answer ? (question.answer.length > 160 ? question.answer.slice(0, 160) + '…' : question.answer) : null;
+
+    let messageText = `✨ *Мой ответ на анонимный вопрос!*\n\n`;
+    messageText += `📌 *Вопрос:*\n"${qShort}"\n\n`;
+    if (aShort) messageText += `💡 *Мой ответ:*\n"${aShort}"\n\n`;
+    messageText += `🎯 *Хочешь так же?*\nЗадай и мне анонимный вопрос!\n\n👉 ${userLink}`;
+
+    // 4) Отправляем
+    try {
+      const imageBuffer = Buffer.from(imageBase64, 'base64');
+      await bot.telegram.sendPhoto(userId, { source: imageBuffer }, {
+        caption: messageText,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: '✍️ Задать мне вопрос', url: userLink }]]
+        }
+      });
+      return res.json({ success: true, message: '✅ Ответ отправлен в ваш чат с ботом!' });
+    } catch (e) {
+      console.error('Telegram sendPhoto error:', e.message);
+      await bot.telegram.sendMessage(userId, messageText, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '✍️ Задать мне вопрос', url: userLink }]] }
+      });
+      return res.json({ success: true, message: '✅ Текст отправлен. Картинка не загрузилась.' });
+    }
+  } catch (error) {
+    console.error('❌ Ошибка шеринга:', error);
+    res.status(500).json({ error: 'Failed to share image' });
+  }
 });
 
 // ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ ==========
 async function generateChatImage(question) {
-    try {
-        const width = 1080;
-        const height = 1920;
-        
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        
-        // Градиентный фон
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#1a1a2e');
-        gradient.addColorStop(0.5, '#16213e');
-        gradient.addColorStop(1, '#0f3460');
-        
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Декоративные элементы
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        for(let i = 0; i < 50; i++) {
-            const x = Math.random() * width;
-            const y = Math.random() * height;
-            const radius = Math.random() * 2;
-            
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fill();
+  const width = 1080;
+  const height = 1920;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  // Фон: градиент + легкий шум
+  const g = ctx.createLinearGradient(0, 0, width, height);
+  g.addColorStop(0, '#0f172a'); // slate-900
+  g.addColorStop(1, '#111827'); // gray-900
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, width, height);
+
+  // Полупрозрачные круги
+  for (let i = 0; i < 40; i++) {
+    const r = 60 + Math.random() * 120;
+    const x = Math.random() * width;
+    const y = Math.random() * height;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(46, 141, 230, ${0.05 + Math.random() * 0.05})`;
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Функция скруглённого прямоугольника
+  const roundRect = (x, y, w, h, r = 28) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+
+  // Центральная карточка
+  const cardW = width - 160;
+  const cardH = height - 480;
+  const cardX = (width - cardW) / 2;
+  const cardY = 180;
+
+  ctx.save();
+  roundRect(cardX, cardY, cardW, cardH, 36);
+  ctx.fillStyle = 'rgba(17, 24, 39, 0.8)'; // gray-900/80
+  ctx.fill();
+  ctx.restore();
+
+  // Заголовок
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = 'bold 56px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Ответ на анонимный вопрос', width / 2, cardY + 90);
+
+  // Разделитель
+  ctx.strokeStyle = 'rgba(46,141,230,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cardX + 60, cardY + 120);
+  ctx.lineTo(cardX + cardW - 60, cardY + 120);
+  ctx.stroke();
+
+  // Вопрос — “пузырь”
+  const bubbleMargin = 60;
+  const qBoxX = cardX + bubbleMargin;
+  const qBoxY = cardY + 170;
+  const qBoxW = cardW - bubbleMargin * 2;
+  const qBoxH = 320;
+
+  ctx.save();
+  roundRect(qBoxX, qBoxY, qBoxW, qBoxH, 28);
+  ctx.fillStyle = 'rgba(30, 58, 138, 0.4)'; // indigo-800/40
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = '#93c5fd'; // light blue
+  ctx.font = 'bold 40px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('Вопрос', qBoxX + 32, qBoxY + 64);
+
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = '34px Arial';
+  drawMultiline(ctx, `“${question.text}”`, qBoxX + 32, qBoxY + 118, qBoxW - 64, 48, 7);
+
+  // Ответ — “пузырь”
+  const aBoxY = qBoxY + qBoxH + 40;
+  const aBoxH = 360;
+
+  ctx.save();
+  roundRect(qBoxX, aBoxY, qBoxW, aBoxH, 28);
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.35)'; // emerald-500/35
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = '#86efac';
+  ctx.font = 'bold 40px Arial';
+  ctx.fillText(question.answer ? 'Мой ответ' : 'Ответ отправлен', qBoxX + 32, aBoxY + 64);
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '34px Arial';
+  const answerText = question.answer ? `“${question.answer}”` : 'Спасибо за вопрос!';
+  drawMultiline(ctx, answerText, qBoxX + 32, aBoxY + 118, qBoxW - 64, 48, 7);
+
+  // CTA
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = 'bold 40px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('👇 Задай и мне анонимный вопрос!', width / 2, cardY + cardH - 140);
+
+  ctx.fillStyle = 'rgba(229, 231, 235, 0.7)';
+  ctx.font = '28px Arial';
+  const botHandle = BOT_USERNAME ? `t.me/${BOT_USERNAME}` : 't.me/your_bot';
+  ctx.fillText(botHandle, width / 2, cardY + cardH - 90);
+
+  // Водяной знак
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.font = '20px Arial';
+  ctx.fillText('Создано в Telegram Questions', width / 2, height - 40);
+
+  return canvas.toBuffer('image/png');
+}
+
+function drawMultiline(ctx, text, x, y, maxWidth, lineHeight, maxLines = 8) {
+  const words = (text || '').split(/\s+/);
+  let line = '';
+  let lines = [];
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + ' ';
+    const w = ctx.measureText(testLine).width;
+    if (w > maxWidth && n > 0) {
+      lines.push(line.trim());
+      line = words[n] + ' ';
+      if (lines.length === maxLines - 1) {
+        // Обрезаем последнюю строку с многоточием
+        let last = '';
+        for (let i = n; i < words.length; i++) {
+          const t = last + words[i] + ' ';
+          if (ctx.measureText(t + '…').width > maxWidth) break;
+          last = t;
         }
-        
-        // Иконка
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 120px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬', width / 2, 400);
-        
-        // Заголовок
-        ctx.font = 'bold 64px Arial';
-        ctx.fillText('Анонимный вопрос', width / 2, 550);
-        
-        // Разделительная линия
-        ctx.strokeStyle = 'rgba(46, 141, 230, 0.5)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(width / 2 - 150, 600);
-        ctx.lineTo(width / 2 + 150, 600);
-        ctx.stroke();
-        
-        // Вопрос
-        ctx.font = '36px Arial';
-        ctx.fillStyle = '#e1e1e1';
-        
-        const questionText = `"${question.text.substring(0, 80)}${question.text.length > 80 ? '...' : ''}"`;
-        wrapText(ctx, questionText, width / 2, 700, width - 200, 50);
-        
-        // Ответ (если есть)
-        if (question.answer) {
-            ctx.font = 'bold 48px Arial';
-            ctx.fillStyle = '#2e8de6';
-            ctx.fillText('Ответ:', width / 2, 900);
-            
-            ctx.font = '32px Arial';
-            ctx.fillStyle = '#ffffff';
-            
-            const answerText = `"${question.answer.substring(0, 100)}${question.answer.length > 100 ? '...' : ''}"`;
-            wrapText(ctx, answerText, width / 2, 1000, width - 200, 40);
-        } else {
-            ctx.font = 'bold 48px Arial';
-            ctx.fillStyle = '#4caf50';
-            ctx.fillText('Ответ отправлен!', width / 2, 950);
-        }
-        
-        // Призыв к действию
-        ctx.font = 'bold 40px Arial';
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText('👇 Задай и мне вопрос!', width / 2, 1300);
-        
-        // Ссылка на бота
-        ctx.font = '28px Arial';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillText('t.me/dota2servicebot', width / 2, 1400);
-        
-        // Водяной знак
-        ctx.font = '18px Arial';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.fillText('Создано через @dota2servicebot', width / 2, 1850);
-        
-        return canvas.toBuffer('image/png');
-        
-    } catch (error) {
-        console.error('Error in generateChatImage:', error);
-        // Простая картинка с ошибкой
-        const canvas = createCanvas(800, 400);
-        const ctx = canvas.getContext('2d');
-        
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(0, 0, 800, 400);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬 Анонимный вопрос', 400, 150);
-        
-        ctx.font = '24px Arial';
-        ctx.fillText('t.me/dota2servicebot', 400, 250);
-        
-        return canvas.toBuffer('image/png');
+        lines.push((last.trim() || words[n]).replace(/\s+$/, '') + '…');
+        break;
+      }
+    } else {
+      line = testLine;
     }
+  }
+  if (lines.length < maxLines && line) lines.push(line.trim());
+
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], x, y + i * lineHeight);
+  }
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
@@ -484,8 +433,7 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        service: 'Telegram Questions API',
-        uploads: '/uploads доступен'
+        service: 'Telegram Questions API'
     });
 });
 
@@ -641,22 +589,8 @@ app.delete('/api/questions/:id', async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Удаляем картинку
-        const imageResult = await db.query(
-            `SELECT image_filename FROM question_images WHERE question_id = $1`,
-            [id]
-        );
-        
-        if (imageResult.rows.length > 0) {
-            const filename = imageResult.rows[0].image_filename;
-            const filePath = path.join(__dirname, '../uploads', filename);
-            
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-            
-            await db.query(`DELETE FROM question_images WHERE question_id = $1`, [id]);
-        }
+        // Удаляем картинку из БД
+        await db.query(`DELETE FROM question_images WHERE question_id = $1`, [id]);
         
         // Удаляем вопрос
         const result = await db.query(
@@ -761,35 +695,35 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
-    try {
-        await initDB();
-        
-        // Создаем папку uploads
-        const uploadsDir = path.join(__dirname, '../uploads');
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-            console.log('📁 Папка uploads создана');
+  try {
+    await initDB();
+
+    app.listen(PORT, async () => {
+      console.log(`🚀 Сервер запущен на порту ${PORT}`);
+      console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
+
+      if (process.env.NODE_ENV === 'production') {
+        const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
+        await bot.telegram.setWebhook(webhookUrl);
+        // получить username бота
+        if (!BOT_USERNAME) {
+          const me = await bot.telegram.getMe();
+          BOT_USERNAME = me.username;
         }
-        
-        app.listen(PORT, async () => {
-            console.log(`🚀 Сервер запущен на порту ${PORT}`);
-            console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
-            console.log(`📁 Загрузки: ${WEB_APP_URL}/uploads`);
-            
-            if (process.env.NODE_ENV === 'production') {
-                const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
-                await bot.telegram.setWebhook(webhookUrl);
-                console.log(`🤖 Вебхук установлен: ${webhookUrl}`);
-            } else {
-                await bot.launch();
-                console.log('🤖 Бот запущен через поллинг');
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Ошибка запуска сервера:', error);
-        process.exit(1);
-    }
+        console.log(`🤖 Вебхук установлен: ${webhookUrl}`);
+      } else {
+        await bot.launch();
+        if (!BOT_USERNAME) {
+          const me = await bot.telegram.getMe();
+          BOT_USERNAME = me.username;
+        }
+        console.log('🤖 Бот запущен через поллинг');
+      }
+    });
+  } catch (error) {
+    console.error('❌ Ошибка запуска сервера:', error);
+    process.exit(1);
+  }
 }
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

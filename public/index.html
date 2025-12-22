@@ -123,152 +123,198 @@
         </div>
     </div>
     
-    <!-- МОДАЛКА ДЛЯ ОТВЕТА -->
     <div id="answerModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>✍️ Ответить на вопрос</h3>
-                <button class="btn-close" onclick="closeAnswerModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div id="questionPreview"></div>
-                <textarea 
-                    id="answerText" 
-                    placeholder="Напишите ваш ответ здесь..." 
-                    rows="5"
-                    maxlength="1000"
-                ></textarea>
-                <div style="text-align: right; font-size: 13px; color: var(--tg-secondary-text);">
-                    <span id="answerCharCount">0</span>/1000 символов
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeAnswerModal()">Отмена</button>
-                <button class="btn btn-primary" onclick="submitAnswer()">Отправить ответ</button>
-            </div>
+    <div class="modal-content" style="max-width: 500px; border-radius: 16px; overflow: hidden;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <h3 style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                <span style="font-size: 24px;">💬</span>
+                <span>Ответить на вопрос</span>
+            </h3>
+            <button class="btn-close" onclick="closeAnswerModal()" style="color: white;">×</button>
         </div>
-    </div>
-    
-    <!-- МОДАЛКА ДЛЯ ШЕРИНГА ОТВЕТА -->
-    <div id="shareAnswerModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>🖼️ Поделиться ответом</h3>
-                <button class="btn-close" onclick="closeShareAnswerModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div id="shareQuestionPreview" style="margin-bottom: 20px; padding: 15px; background: var(--tg-input-bg); border-radius: 8px; border-left: 3px solid var(--tg-accent-color);"></div>
-                
-                <div id="shareImagePreview" style="text-align: center; margin: 20px 0;">
-                    <div class="loading-spinner" style="width: 50px; height: 50px; margin: 0 auto;"></div>
-                    <p style="margin-top: 10px; color: var(--tg-secondary-text);">Генерируем картинку...</p>
-                </div>
-                
-                <div style="margin-top: 20px; padding: 15px; background: rgba(46, 141, 230, 0.1); border-radius: 8px; border: 1px solid rgba(46, 141, 230, 0.3);">
-                    <p style="color: var(--tg-text-color); margin-bottom: 10px; font-size: 14px;">
-                        <strong>💡 После генерации картинки:</strong>
-                    </p>
-                    <ul style="color: var(--tg-secondary-text); font-size: 13px; margin: 0; padding-left: 20px;">
-                        <li>Картинка автоматически скачается</li>
-                        <li>Скопируйте текст ниже и опубликуйте вместе с картинкой</li>
-                        <li>Текст содержит вашу ссылку для вопросов</li>
-                    </ul>
-                </div>
-                
-                <div style="margin-top: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--tg-text-color);">
-                        Текст для поста:
-                    </label>
-                    <textarea 
-                        id="shareText" 
-                        rows="4"
-                        style="width: 100%; padding: 12px; border: 1px solid var(--tg-border-color); border-radius: 8px; background: var(--tg-input-bg); color: var(--tg-text-color); font-size: 14px; resize: vertical;"
-                        readonly
-                    ></textarea>
-                    <button class="btn btn-secondary" onclick="copyShareText()" style="margin-top: 10px; width: 100%;">
-                        📋 Скопировать текст
-                    </button>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" onclick="downloadAndShare()">
-                    💾 Скачать картинку и текст
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <script src="app.js"></script>
-    <script>
-        
-// === УПРОЩЕННАЯ ФУНКЦИЯ ШЕРИНГА ===
-    
-    // Главная функция для открытия модалки выбора типа шеринга
-    async function openShareModal(questionId) {
-        try {
-            showNotification('Подготавливаем шеринг...', 'info');
-            
-            // Создаем простую модалку выбора
-            const modalHTML = `
-                <div class="modal active" id="shareChoiceModal">
-                    <div class="modal-content" style="max-width: 400px;">
-                        <div class="modal-header">
-                            <h3>📤 Поделиться ответом</h3>
-                            <button class="btn-close" onclick="closeShareChoiceModal()">×</button>
-                        </div>
-                        <div class="modal-body">
-                            <div style="text-align: center; margin-bottom: 25px;">
-                                <div style="font-size: 48px; color: var(--tg-accent-color); margin-bottom: 15px;">💬</div>
-                                <p style="color: var(--tg-secondary-text); font-size: 14px;">
-                                    Куда отправить ответ?
-                                </p>
-                            </div>
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
-                                <button class="share-option-btn" onclick="shareToTelegramStory(${questionId})" style="
-                                    background: var(--tg-input-bg);
-                                    border: 2px solid var(--tg-border-color);
-                                    border-radius: 12px;
-                                    padding: 20px;
-                                    text-align: center;
-                                    cursor: pointer;
-                                    transition: all 0.2s;
-                                    display: flex;
-                                    flex-direction: column;
-                                    align-items: center;
-                                    gap: 10px;
-                                ">
-                                    <div style="font-size: 32px;">📱</div>
-                                    <div style="font-weight: 600; font-size: 15px;">В историю</div>
-                                    <div style="font-size: 12px; color: var(--tg-secondary-text);">Поделиться в Stories</div>
-                                </button>
-                                
-                                <button class="share-option-btn" onclick="shareToTelegramChat(${questionId})" style="
-                                    background: var(--tg-input-bg);
-                                    border: 2px solid var(--tg-border-color);
-                                    border-radius: 12px;
-                                    padding: 20px;
-                                    text-align: center;
-                                    cursor: pointer;
-                                    transition: all 0.2s;
-                                    display: flex;
-                                    flex-direction: column;
-                                    align-items: center;
-                                    gap: 10px;
-                                ">
-                                    <div style="font-size: 32px;">💬</div>
-                                    <div style="font-weight: 600; font-size: 15px;">В чат</div>
-                                    <div style="font-size: 12px; color: var(--tg-secondary-text);">Отправить друзьям</div>
-                                </button>
-                            </div>
-                            
-                            <p style="text-align: center; color: var(--tg-secondary-text); font-size: 12px; margin-top: 20px;">
-                                Ответ будет отправлен через Telegram бота
-                            </p>
-                        </div>
+        <div class="modal-body" style="padding: 25px;">
+            <!-- Красивое оформление вопроса -->
+            <div id="questionPreview" style="
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 25px;
+                border-left: 5px solid #667eea;
+                position: relative;
+            ">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <div style="
+                        width: 40px;
+                        height: 40px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-weight: bold;
+                        font-size: 18px;
+                    ">❓</div>
+                    <div>
+                        <div style="font-size: 14px; color: #666; margin-bottom: 2px;">Вопрос от анонима:</div>
+                        <div style="font-size: 16px; font-weight: 500; color: #333;" id="previewQuestionText"></div>
                     </div>
                 </div>
-            `;
+            </div>
+            
+            <!-- Красивое поле для ответа -->
+            <div style="margin-bottom: 20px;">
+                <label style="
+                    display: block;
+                    margin-bottom: 12px;
+                    font-weight: 600;
+                    color: #333;
+                    font-size: 15px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <span style="
+                        width: 32px;
+                        height: 32px;
+                        background: linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 16px;
+                    ">✍️</span>
+                    Ваш ответ:
+                </label>
+                
+                <textarea 
+                    id="answerText" 
+                    placeholder="Напишите ваш ответ здесь... Будьте вежливы и конструктивны!"
+                    rows="6"
+                    maxlength="1000"
+                    style="
+                        width: 100%;
+                        padding: 18px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 12px;
+                        font-size: 15px;
+                        font-family: inherit;
+                        resize: vertical;
+                        background: #fafafa;
+                        color: #333;
+                        transition: all 0.3s;
+                        line-height: 1.5;
+                    "
+                    onfocus="this.style.borderColor='#667eea'; this.style.boxShadow='0 0 0 3px rgba(102, 126, 234, 0.1)';"
+                    onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none';"
+                ></textarea>
+                
+                <!-- Счетчик символов с прогресс-баром -->
+                <div style="margin-top: 12px;">
+                    <div style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 6px;
+                        font-size: 13px;
+                        color: #666;
+                    ">
+                        <span id="answerCharCount">0</span> / 1000 символов
+                        <span id="charLimitWarning" style="color: #ff9800; display: none;">
+                            ⚠️ Осталось мало символов
+                        </span>
+                    </div>
+                    <div style="
+                        height: 4px;
+                        background: #e0e0e0;
+                        border-radius: 2px;
+                        overflow: hidden;
+                    ">
+                        <div id="charProgressBar" style="
+                            height: 100%;
+                            width: 0%;
+                            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+                            transition: width 0.3s;
+                        "></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Подсказки -->
+            <div style="
+                background: #e8f4fd;
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-left: 4px solid #2196F3;
+            ">
+                <div style="display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="
+                        width: 28px;
+                        height: 28px;
+                        background: #2196F3;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 14px;
+                        flex-shrink: 0;
+                    ">💡</div>
+                    <div style="font-size: 13px; color: #2c5282;">
+                        <strong>Совет:</strong> После ответа вы сможете поделиться им в чате с ботом. 
+                        Ответ будет отправлен анонимно, но вы получите уведомление.
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="
+            padding: 20px 25px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: #fafafa;
+        ">
+            <button onclick="closeAnswerModal()" style="
+                padding: 12px 24px;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                background: white;
+                color: #666;
+                font-weight: 600;
+                font-size: 15px;
+                cursor: pointer;
+                transition: all 0.3s;
+                min-width: 100px;
+            " onmouseover="this.style.borderColor='#ccc'; this.style.color='#333';"
+               onmouseout="this.style.borderColor='#e0e0e0'; this.style.color='#666';">
+                Отмена
+            </button>
+            <button onclick="submitAnswer()" style="
+                padding: 12px 24px;
+                border: none;
+                border-radius: 10px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                font-weight: 600;
+                font-size: 15px;
+                cursor: pointer;
+                transition: all 0.3s;
+                min-width: 140px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';"
+               onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                <span>📤</span>
+                <span>Отправить ответ</span>
+            </button>
+        </div>
+    </div>
+</div>
             
             // Удаляем старую модалку если есть
             const oldModal = document.getElementById('shareChoiceModal');

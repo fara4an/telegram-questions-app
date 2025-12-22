@@ -409,29 +409,73 @@ function showNotification(message, type = 'info', duration = 3000) {
     }
 }
 
-// ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM загружен, запускаем приложение...');
-    setTimeout(initApp, 100);
-});
-
-// ========== ФУНКЦИИ ДЛЯ ИНТЕРФЕЙСА ==========
-
-function shareProfileToTelegram() {
-    const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
-    
-    if (tg && tg.openTelegramLink) {
-        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
-        tg.openTelegramLink(shareUrl);
-    } else {
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`, '_blank');
-    }
-}
+// ========== КРАСИВАЯ МОДАЛКА ОТВЕТА ==========
 
 function openAnswerModal(questionId) {
     currentQuestionId = questionId;
     const modal = getElement('answerModal');
+    
+    // Получаем текст вопроса для превью
+    fetch(`/api/question/${questionId}`)
+        .then(response => response.json())
+        .then(question => {
+            const previewElement = getElement('previewQuestionText');
+            if (previewElement) {
+                previewElement.textContent = question.text.length > 120 ? 
+                    question.text.substring(0, 120) + '...' : question.text;
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки вопроса:', error);
+        });
+    
+    // Настраиваем счетчик символов
+    const answerText = getElement('answerText');
+    const charCount = getElement('answerCharCount');
+    const progressBar = getElement('charProgressBar');
+    const warning = getElement('charLimitWarning');
+    
+    if (answerText && charCount && progressBar && warning) {
+        // Очищаем поле при открытии
+        answerText.value = '';
+        charCount.textContent = '0';
+        progressBar.style.width = '0%';
+        warning.style.display = 'none';
+        
+        answerText.addEventListener('input', function() {
+            const length = this.value.length;
+            charCount.textContent = length;
+            
+            // Обновляем прогресс-бар
+            const percentage = (length / 1000) * 100;
+            progressBar.style.width = `${Math.min(percentage, 100)}%`;
+            
+            // Меняем цвет при приближении к лимиту
+            if (length > 900) {
+                progressBar.style.background = 'linear-gradient(90deg, #FF9800 0%, #FF5722 100%)';
+                warning.style.display = 'inline';
+            } else if (length > 700) {
+                progressBar.style.background = 'linear-gradient(90deg, #FFC107 0%, #FF9800 100%)';
+                warning.style.display = 'inline';
+            } else {
+                progressBar.style.background = 'linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%)';
+                warning.style.display = 'none';
+            }
+            
+            // Блокируем ввод при превышении лимита
+            if (length > 1000) {
+                this.value = this.value.substring(0, 1000);
+                charCount.textContent = '1000';
+                progressBar.style.width = '100%';
+                progressBar.style.background = 'linear-gradient(90deg, #FF5722 0%, #F44336 100%)';
+                showNotification('Достигнут лимит символов!', 'warning');
+            }
+        });
+        
+        // Фокус на поле ввода
+        setTimeout(() => answerText.focus(), 300);
+    }
+    
     if (modal) modal.classList.add('active');
 }
 
@@ -441,7 +485,7 @@ function closeAnswerModal() {
 }
 
 async function submitAnswer() {
-    const answerText = document.getElementById('answerText');
+    const answerText = getElement('answerText');
     const answer = answerText?.value.trim();
     
     if (!answer) {
@@ -450,7 +494,7 @@ async function submitAnswer() {
     }
     
     if (answer.length < 2) {
-        showNotification('Ответ слишком короткий', 'warning');
+        showNotification('Ответ слишком короткий (минимум 2 символа)', 'warning');
         return;
     }
     
@@ -486,7 +530,7 @@ async function submitAnswer() {
 
 async function openShareModal(questionId) {
     try {
-        showNotification('🎨 Отправляем ответ в чат...', 'info');
+        showNotification('🎨 Отправляем ответ в ваш чат с ботом...', 'info');
         
         const response = await fetch('/api/share-to-chat', {
             method: 'POST',
@@ -505,17 +549,19 @@ async function openShareModal(questionId) {
         const data = await response.json();
         
         if (data.success) {
-            showNotification('✅ Ответ отправлен в ваш чат с ботом!', 'success', 5000);
-            
-            setTimeout(() => {
-                if (confirm('Открыть чат с ботом?')) {
+            // Красивое уведомление об успехе
+            showNotificationWithAction(
+                '✅ Ответ отправлен в ваш чат с ботом!',
+                'success',
+                '📱 Открыть чат',
+                () => {
                     if (tg && tg.openLink) {
                         tg.openLink(`https://t.me/${botUsername}`);
                     } else {
                         window.open(`https://t.me/${botUsername}`, '_blank');
                     }
                 }
-            }, 1000);
+            );
         } else {
             throw new Error(data.message || 'Неизвестная ошибка');
         }
@@ -523,41 +569,49 @@ async function openShareModal(questionId) {
     } catch (error) {
         console.error('❌ Ошибка шеринга:', error);
         showNotification(`❌ ${error.message}`, 'error', 5000);
-        
-        setTimeout(async () => {
-            if (confirm('Не удалось отправить в чат. Скачать картинку?')) {
-                await downloadImageFallback(questionId);
-            }
-        }, 500);
     }
 }
 
-async function downloadImageFallback(questionId) {
-    try {
-        const response = await fetch(`/api/share-image/${questionId}`);
-        const data = await response.json();
-        
-        if (data.success && data.imageUrl) {
-            const a = document.createElement('a');
-            a.href = data.imageUrl;
-            a.download = `мой_ответ_${questionId}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            
-            const userLink = `https://t.me/${botUsername}?start=ask_${userId}`;
-            const shareText = `💬 Мой ответ на анонимный вопрос!\n\nЗадай и мне вопрос: ${userLink}`;
-            
-            navigator.clipboard.writeText(shareText)
-                .then(() => showNotification('✅ Картинка скачана! Текст скопирован.', 'success'))
-                .catch(() => showNotification('✅ Картинка скачана!', 'success'));
+// Новая функция для уведомлений с кнопкой действия
+function showNotificationWithAction(message, type, actionText, actionCallback) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    notification.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+            <div class="notification-icon">✅</div>
+            <div style="flex: 1;">${message}</div>
+        </div>
+        <button onclick="
+            this.parentElement.remove();
+            (${actionCallback.toString().replace('function ', 'function ')})();
+        " style="
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)';"
+           onmouseout="this.style.background='rgba(255, 255, 255, 0.2)';">
+            ${actionText}
+        </button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
         }
-    } catch (error) {
-        console.error('Ошибка скачивания:', error);
-        showNotification('Не удалось скачать картинку', 'error');
-    }
+    }, 8000);
 }
 
+// Удаление вопроса
 async function deleteQuestion(questionId) {
     if (!confirm('Удалить вопрос?')) return;
     
@@ -580,6 +634,24 @@ async function deleteQuestion(questionId) {
     }
 }
 
+function shareProfileToTelegram() {
+    const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+    
+    if (tg && tg.openTelegramLink) {
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
+        tg.openTelegramLink(shareUrl);
+    } else {
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`, '_blank');
+    }
+}
+
+// ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 DOM загружен, запускаем приложение...');
+    setTimeout(initApp, 100);
+});
+
 // ========== ГЛОБАЛЬНЫЕ ФУНКЦИИ ==========
 window.shareProfileToTelegram = shareProfileToTelegram;
 window.openAnswerModal = openAnswerModal;
@@ -587,3 +659,4 @@ window.closeAnswerModal = closeAnswerModal;
 window.submitAnswer = submitAnswer;
 window.openShareModal = openShareModal;
 window.deleteQuestion = deleteQuestion;
+window.showNotificationWithAction = showNotificationWithAction;
