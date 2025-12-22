@@ -3,10 +3,10 @@ let tg = window.Telegram?.WebApp;
 let userId = null;
 let username = null;
 let currentQuestionId = null;
+const botUsername = 'dota2servicebot';
 
 // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
-// Безопасное получение элемента
 function getElement(id) {
     const element = document.getElementById(id);
     if (!element) {
@@ -15,7 +15,6 @@ function getElement(id) {
     return element;
 }
 
-// Безопасная установка текста
 function setText(id, text) {
     const element = getElement(id);
     if (element) {
@@ -23,21 +22,13 @@ function setText(id, text) {
     }
 }
 
-// Инициализация
 async function initApp() {
     console.log('🚀 Инициализация приложения');
     
     try {
-        // Получаем данные пользователя
         await initUserData();
-        
-        // Инициализируем UI
         await initUI();
-        
-        // Загружаем данные
         await loadAllData();
-        
-        // Настраиваем автообновление
         setInterval(loadAllData, 30000);
         
         console.log('✅ Приложение инициализировано');
@@ -47,7 +38,6 @@ async function initApp() {
     }
 }
 
-// Получение данных пользователя
 async function initUserData() {
     console.log('Получение данных пользователя...');
     
@@ -56,19 +46,13 @@ async function initUserData() {
         tg.expand();
         
         const initData = tg.initDataUnsafe || {};
-        console.log('Данные Telegram:', initData);
-        
         userId = initData.user?.id;
         username = initData.user?.username || initData.user?.first_name || 'Пользователь';
         
         if (!userId) {
-            console.warn('⚠️ userId не найден в данных Telegram');
-            // Пробуем получить из URL или использовать случайный ID
             userId = 'demo_' + Math.floor(Math.random() * 1000000);
         }
     } else {
-        // Режим разработки
-        console.warn('⚠️ Режим разработки - нет Telegram WebApp');
         userId = 'demo_' + Math.floor(Math.random() * 1000000);
         username = 'Демо пользователь';
     }
@@ -77,41 +61,32 @@ async function initUserData() {
     return { userId, username };
 }
 
-// Инициализация UI
 async function initUI() {
     console.log('Инициализация UI...');
     
-    // Обновляем информацию пользователя
     setText('username', username);
     setText('userId', `ID: ${userId}`);
     setText('profileName', username);
     setText('profileId', userId);
     
-    // Аватар
     const avatar = getElement('userAvatar');
     if (avatar) {
         const firstLetter = username ? username.charAt(0).toUpperCase() : 'U';
         avatar.textContent = firstLetter;
     }
     
-    // Ссылка для вопросов
-    const botUsername = 'dota2servicebot';
     const shareLink = `https://t.me/${botUsername}?start=ask_${userId}`;
     setText('shareLink', shareLink);
     
-    // Настраиваем вкладки
     setupTabs();
-    
     console.log('✅ UI инициализирован');
 }
 
-// Загрузка всех данных
 async function loadAllData() {
     console.log('📥 Загрузка данных...');
     updateStatus('🔄 Загрузка...');
     
     try {
-        // Загружаем параллельно
         await Promise.allSettled([
             loadIncomingQuestions(),
             loadSentQuestions(),
@@ -123,17 +98,12 @@ async function loadAllData() {
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error);
         updateStatus('🟡 Демо-режим');
-        
-        // Показываем тестовые данные
         await showTestData();
         showNotification('Используем тестовые данные', 'warning');
     }
 }
 
-// Показать тестовые данные
 async function showTestData() {
-    console.log('Показ тестовых данных...');
-    
     const testIncoming = [
         {
             id: 1,
@@ -162,17 +132,14 @@ async function showTestData() {
     updateBadge('incoming', testIncoming.length);
     updateBadge('sent', testSent.length);
     
-    // Статистика
     setText('statTotal', '2');
     setText('statReceived', '1');
     setText('statSent', '1');
     setText('statAnswered', '1');
 }
 
-// Загрузка входящих вопросов
 async function loadIncomingQuestions() {
     try {
-        console.log(`Запрос входящих вопросов для ${userId}`);
         const response = await fetch(`/api/questions/incoming/${userId}`);
         
         if (!response.ok) {
@@ -180,8 +147,6 @@ async function loadIncomingQuestions() {
         }
         
         const questions = await response.json();
-        console.log(`Получено ${questions.length} входящих вопросов`);
-        
         renderIncomingQuestions(questions);
         updateBadge('incoming', questions.length);
         
@@ -192,10 +157,8 @@ async function loadIncomingQuestions() {
     }
 }
 
-// Загрузка отправленных вопросов
 async function loadSentQuestions() {
     try {
-        console.log(`Запрос отправленных вопросов для ${userId}`);
         const response = await fetch(`/api/questions/sent/${userId}`);
         
         if (!response.ok) {
@@ -203,8 +166,6 @@ async function loadSentQuestions() {
         }
         
         const questions = await response.json();
-        console.log(`Получено ${questions.length} отправленных вопросов`);
-        
         renderSentQuestions(questions);
         updateBadge('sent', questions.length);
         
@@ -215,23 +176,17 @@ async function loadSentQuestions() {
     }
 }
 
-// Загрузка статистики
 async function loadStats() {
     try {
-        console.log(`Запрос статистики для ${userId}`);
         const response = await fetch(`/api/stats/${userId}`);
         
         if (response.ok) {
             const stats = await response.json();
-            console.log('Статистика:', stats);
-            
             setText('statTotal', stats.total || '0');
             setText('statReceived', stats.received || '0');
             setText('statSent', stats.sent || '0');
             setText('statAnswered', stats.answered || '0');
         } else {
-            console.warn('Статистика недоступна');
-            // Используем значения по умолчанию
             setText('statTotal', '0');
             setText('statReceived', '0');
             setText('statSent', '0');
@@ -248,7 +203,6 @@ async function loadStats() {
 
 // ========== РЕНДЕРИНГ ==========
 
-// Рендер входящих вопросов
 function renderIncomingQuestions(questions) {
     const container = getElement('incoming-list');
     if (!container) return;
@@ -283,7 +237,7 @@ function renderIncomingQuestions(questions) {
                 </div>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="openShareModal(${q.id})">
-                        🖼️ Поделиться ответом
+                        📤 Поделиться в чат
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
                         🗑️ Удалить
@@ -305,7 +259,6 @@ function renderIncomingQuestions(questions) {
     container.innerHTML = html;
 }
 
-// Рендер отправленных вопросов
 function renderSentQuestions(questions) {
     const container = getElement('sent-list');
     if (!container) return;
@@ -337,7 +290,7 @@ function renderSentQuestions(questions) {
                 </div>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="openShareModal(${q.id})">
-                        🖼️ Поделиться ответом
+                        📤 Поделиться в чат
                     </button>
                 </div>
             ` : `
@@ -389,7 +342,6 @@ function updateStatus(status) {
     if (statusElement) {
         statusElement.textContent = status;
         
-        // Обновляем точку статуса
         if (status.includes('🟢') || status.includes('✅')) {
             statusElement.innerHTML = '<span class="status-dot"></span> ' + status;
         } else if (status.includes('🔴') || status.includes('❌')) {
@@ -459,25 +411,18 @@ function showNotification(message, type = 'info', duration = 3000) {
 
 // ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
 
-// Запуск приложения при полной загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📄 DOM загружен, запускаем приложение...');
     setTimeout(initApp, 100);
 });
 
-// Очистка при разгрузке
-window.addEventListener('beforeunload', () => {
-    // Очистка ресурсов если нужно
-});
-
 // ========== ФУНКЦИИ ДЛЯ ИНТЕРФЕЙСА ==========
 
 function shareProfileToTelegram() {
-    const inviteLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
-    const shareText = `💬 Задай мне анонимный вопрос!\n\n${inviteLink}`;
+    const inviteLink = `https://t.me/${botUsername}?start=ask_${userId}`;
     
     if (tg && tg.openTelegramLink) {
-        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(shareText)}`;
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`;
         tg.openTelegramLink(shareUrl);
     } else {
         window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent('Задай мне анонимный вопрос!')}`, '_blank');
@@ -519,19 +464,13 @@ async function submitAnswer() {
     try {
         const response = await fetch(`/api/questions/${currentQuestionId}/answer`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                answer: answer
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answer: answer })
         });
         
         if (response.ok) {
             closeAnswerModal();
             showNotification('✅ Ответ сохранен!', 'success');
-            
-            // Перезагружаем данные
             await loadAllData();
         } else {
             const error = await response.json();
@@ -543,243 +482,88 @@ async function submitAnswer() {
     }
 }
 
-// ========== ШЕРИНГ С СОХРАНЕНИЕМ В БД ==========
+// ========== ПРОСТОЙ ШЕРИНГ В ЧАТ ==========
 
-// Главная функция шеринга
 async function openShareModal(questionId) {
     try {
-        showNotification('🎨 Подготавливаем картинку...', 'info');
+        showNotification('🎨 Отправляем ответ в чат...', 'info');
         
-        // 1. Получаем или генерируем картинку (сохраняется в БД)
+        const response = await fetch('/api/share-to-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,
+                questionId: questionId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка сервера');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('✅ Ответ отправлен в ваш чат с ботом!', 'success', 5000);
+            
+            setTimeout(() => {
+                if (confirm('Открыть чат с ботом?')) {
+                    if (tg && tg.openLink) {
+                        tg.openLink(`https://t.me/${botUsername}`);
+                    } else {
+                        window.open(`https://t.me/${botUsername}`, '_blank');
+                    }
+                }
+            }, 1000);
+        } else {
+            throw new Error(data.message || 'Неизвестная ошибка');
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка шеринга:', error);
+        showNotification(`❌ ${error.message}`, 'error', 5000);
+        
+        setTimeout(async () => {
+            if (confirm('Не удалось отправить в чат. Скачать картинку?')) {
+                await downloadImageFallback(questionId);
+            }
+        }, 500);
+    }
+}
+
+async function downloadImageFallback(questionId) {
+    try {
         const response = await fetch(`/api/share-image/${questionId}`);
         const data = await response.json();
         
-        if (!data.success) {
-            throw new Error('Не удалось создать картинку');
+        if (data.success && data.imageUrl) {
+            const a = document.createElement('a');
+            a.href = data.imageUrl;
+            a.download = `мой_ответ_${questionId}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            const userLink = `https://t.me/${botUsername}?start=ask_${userId}`;
+            const shareText = `💬 Мой ответ на анонимный вопрос!\n\nЗадай и мне вопрос: ${userLink}`;
+            
+            navigator.clipboard.writeText(shareText)
+                .then(() => showNotification('✅ Картинка скачана! Текст скопирован.', 'success'))
+                .catch(() => showNotification('✅ Картинка скачана!', 'success'));
         }
-        
-        console.log(`Картинка: ${data.imageUrl} (кэш: ${data.cached ? 'да' : 'нет'})`);
-        
-        // 2. Показываем модалку с выбором куда делиться
-        showShareChoiceModal(questionId, data.imageUrl);
-        
-    } catch (error) {
-        console.error('❌ Ошибка подготовки шеринга:', error);
-        showNotification('Не удалось подготовить картинку', 'error');
-    }
-}
-
-// Модалка выбора типа шеринга
-function showShareChoiceModal(questionId, imageUrl) {
-    const userLink = `https://t.me/dota2servicebot?start=ask_${userId}`;
-    const shareText = `💬 Мой ответ на анонимный вопрос!\n\nЗадай и мне вопрос: ${userLink}`;
-    
-    const modalHTML = `
-        <div class="modal active" id="shareChoiceModal">
-            <div class="modal-content" style="max-width: 420px;">
-                <div class="modal-header">
-                    <h3>📤 Поделиться ответом</h3>
-                    <button class="btn-close" onclick="closeShareChoiceModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <!-- Превью картинки -->
-                    <div style="text-align: center; margin-bottom: 20px;">
-                        <img src="${imageUrl}" 
-                             style="max-width: 100%; border-radius: 10px; border: 2px solid var(--tg-border-color); max-height: 200px;"
-                             alt="Превью ответа">
-                        <p style="font-size: 12px; color: var(--tg-secondary-text); margin-top: 8px;">
-                            ${imageUrl.includes('uploads/') ? '✅ Картинка сохранена в базе' : '🔄 Генерируется...'}
-                        </p>
-                    </div>
-                    
-                    <!-- Выбор куда постить -->
-                    <div style="margin: 20px 0;">
-                        <p style="color: var(--tg-secondary-text); text-align: center; margin-bottom: 15px;">
-                            <strong>Куда отправить картинку?</strong>
-                        </p>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <!-- В ИСТОРИЮ -->
-                            <button onclick="shareToTelegramStory('${questionId}', '${encodeURIComponent(imageUrl)}', '${encodeURIComponent(shareText)}')" 
-                                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                           border: none;
-                                           border-radius: 12px;
-                                           padding: 18px;
-                                           text-align: center;
-                                           cursor: pointer;
-                                           transition: all 0.3s;
-                                           display: flex;
-                                           flex-direction: column;
-                                           align-items: center;
-                                           gap: 10px;">
-                                <div style="font-size: 32px; background: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    📱
-                                </div>
-                                <div style="font-weight: 600; font-size: 16px; color: white;">В историю</div>
-                                <div style="font-size: 12px; color: rgba(255,255,255,0.8);">Stories / Status</div>
-                            </button>
-                            
-                            <!-- В ЧАТ -->
-                            <button onclick="shareToTelegramChat('${questionId}', '${encodeURIComponent(imageUrl)}', '${encodeURIComponent(shareText)}')" 
-                                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                           border: none;
-                                           border-radius: 12px;
-                                           padding: 18px;
-                                           text-align: center;
-                                           cursor: pointer;
-                                           transition: all 0.3s;
-                                           display: flex;
-                                           flex-direction: column;
-                                           align-items: center;
-                                           gap: 10px;">
-                                <div style="font-size: 32px; background: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    💬
-                                </div>
-                                <div style="font-weight: 600; font-size: 16px; color: white;">В чат</div>
-                                <div style="font-size: 12px; color: rgba(255,255,255,0.8);">Сообщения</div>
-                            </button>
-                        </div>
-                        
-                        <!-- ИЛИ -->
-                        <div style="text-align: center; margin: 20px 0;">
-                            <div style="height: 1px; background: var(--tg-border-color); position: relative;">
-                                <span style="background: var(--tg-bg-color); padding: 0 10px; position: absolute; top: -8px; left: 50%; transform: translateX(-50%); color: var(--tg-secondary-text); font-size: 12px;">
-                                    или
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <!-- Скачать -->
-                        <button onclick="downloadImage('${questionId}', '${encodeURIComponent(imageUrl)}')" 
-                                style="width: 100%;
-                                       background: var(--tg-input-bg);
-                                       border: 2px solid var(--tg-border-color);
-                                       border-radius: 12px;
-                                       padding: 15px;
-                                       text-align: center;
-                                       cursor: pointer;
-                                       transition: all 0.2s;
-                                       display: flex;
-                                       align-items: center;
-                                       justify-content: center;
-                                       gap: 10px;">
-                            <div style="font-size: 24px;">💾</div>
-                            <div>
-                                <div style="font-weight: 600; font-size: 15px;">Скачать картинку</div>
-                                <div style="font-size: 12px; color: var(--tg-secondary-text);">Поделитесь вручную</div>
-                            </div>
-                        </button>
-                    </div>
-                    
-                    <!-- Техническая информация -->
-                    <div style="background: rgba(46, 141, 230, 0.1); border-radius: 8px; padding: 10px; margin-top: 15px;">
-                        <p style="font-size: 11px; color: var(--tg-secondary-text); text-align: center; margin: 0;">
-                            📁 Картинка сохранена в базе данных
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Удаляем старые модалки
-    const oldModal = document.getElementById('shareChoiceModal');
-    if (oldModal) oldModal.remove();
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-}
-
-// Шеринг в историю (через публичную ссылку)
-async function shareToTelegramStory(questionId, encodedImageUrl, encodedText) {
-    try {
-        closeShareChoiceModal();
-        showNotification('📱 Открываем шеринг в историю...', 'info');
-        
-        const imageUrl = decodeURIComponent(encodedImageUrl);
-        const text = decodeURIComponent(encodedText);
-        
-        // Telegram может открыть сторис через публичную ссылку
-        if (tg && tg.openTelegramLink) {
-            // Формируем ссылку для шеринга
-            const shareUrl = `tg://share?url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}`;
-            tg.openTelegramLink(shareUrl);
-        } else {
-            // Запасной вариант
-            window.open(`https://t.me/share/url?url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}`, '_blank');
-        }
-        
-    } catch (error) {
-        console.error('Ошибка шеринга в историю:', error);
-        showNotification('Не удалось открыть шеринг в историю', 'error');
-    }
-}
-
-// Шеринг в чат (через публичную ссылку)
-async function shareToTelegramChat(questionId, encodedImageUrl, encodedText) {
-    try {
-        closeShareChoiceModal();
-        showNotification('💬 Открываем шеринг в чат...', 'info');
-        
-        const imageUrl = decodeURIComponent(encodedImageUrl);
-        const text = decodeURIComponent(encodedText);
-        
-        // Telegram может открыть шеринг в чат через публичную ссылку
-        if (tg && tg.openTelegramLink) {
-            const shareUrl = `tg://share?url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}`;
-            tg.openTelegramLink(shareUrl);
-        } else {
-            window.open(`https://t.me/share/url?url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}`, '_blank');
-        }
-        
-    } catch (error) {
-        console.error('Ошибка шеринга в чат:', error);
-        showNotification('Не удалось открыть шеринг в чат', 'error');
-    }
-}
-
-// Скачать картинку
-async function downloadImage(questionId, encodedImageUrl) {
-    try {
-        closeShareChoiceModal();
-        
-        const imageUrl = decodeURIComponent(encodedImageUrl);
-        
-        // Создаем ссылку для скачивания
-        const a = document.createElement('a');
-        a.href = imageUrl;
-        a.download = `ответ_на_вопрос_${questionId}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        // Показываем уведомление
-        showNotification('✅ Картинка скачана!', 'success');
-        
     } catch (error) {
         console.error('Ошибка скачивания:', error);
         showNotification('Не удалось скачать картинку', 'error');
     }
 }
 
-// Закрыть модалку выбора
-function closeShareChoiceModal() {
-    const modal = document.getElementById('shareChoiceModal');
-    if (modal) modal.remove();
-}
-
-// Удаление вопроса
 async function deleteQuestion(questionId) {
     if (!confirm('Удалить вопрос?')) return;
     
     try {
         showNotification('🗑️ Удаление...', 'info');
         
-        // Удаляем картинку из БД
-        await fetch(`/api/share-image/${questionId}`, {
-            method: 'DELETE'
-        });
-        
-        // Удаляем вопрос
         const response = await fetch(`/api/questions/${questionId}`, {
             method: 'DELETE'
         });
@@ -802,8 +586,4 @@ window.openAnswerModal = openAnswerModal;
 window.closeAnswerModal = closeAnswerModal;
 window.submitAnswer = submitAnswer;
 window.openShareModal = openShareModal;
-window.shareToTelegramStory = shareToTelegramStory;
-window.shareToTelegramChat = shareToTelegramChat;
-window.downloadImage = downloadImage;
-window.closeShareChoiceModal = closeShareChoiceModal;
 window.deleteQuestion = deleteQuestion;

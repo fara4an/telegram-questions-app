@@ -4,8 +4,6 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "bot": "node src/bot.js",
-    "clean-uploads": "rm -rf uploads/*",
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
@@ -16,9 +14,6 @@
     "cors": "^2.8.5",
     "canvas": "^2.11.2",
     "crypto": "^1.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
