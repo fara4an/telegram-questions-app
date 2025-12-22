@@ -21,7 +21,14 @@ async function initDB() {
         await db.connect();
         console.log('✅ База данных подключена');
         
+        // Создаем таблицы с обновленной структурой
         await db.query(`
+            -- Удаляем старые таблицы если нужно
+            DROP TABLE IF EXISTS question_images CASCADE;
+            DROP TABLE IF EXISTS questions CASCADE;
+            DROP TABLE IF EXISTS users CASCADE;
+            
+            -- Создаем таблицу пользователей
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
@@ -30,6 +37,7 @@ async function initDB() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
+            -- Создаем таблицу вопросов
             CREATE TABLE IF NOT EXISTS questions (
                 id SERIAL PRIMARY KEY,
                 from_user_id BIGINT,
@@ -41,6 +49,7 @@ async function initDB() {
                 answered_at TIMESTAMP
             );
             
+            -- Создаем таблицу для кэширования картинок
             CREATE TABLE IF NOT EXISTS question_images (
                 id SERIAL PRIMARY KEY,
                 question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
@@ -49,14 +58,69 @@ async function initDB() {
                 UNIQUE(question_id)
             );
             
+            -- Создаем индексы
             CREATE INDEX IF NOT EXISTS idx_questions_to_user ON questions(to_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_from_user ON questions(from_user_id);
             CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(is_answered);
             CREATE INDEX IF NOT EXISTS idx_question_images_question ON question_images(question_id);
         `);
+        
+        console.log('✅ Таблицы созданы/обновлены');
+        
     } catch (error) {
         console.error('❌ Ошибка БД:', error);
-        process.exit(1);
+        // Пробуем альтернативный способ - добавляем колонки если таблицы уже есть
+        try {
+            await addMissingColumns();
+        } catch (addError) {
+            console.error('❌ Ошибка добавления колонок:', addError);
+        }
+    }
+}
+
+// Функция для добавления отсутствующих колонок
+async function addMissingColumns() {
+    try {
+        // Проверяем и добавляем first_name в users
+        await db.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name = 'users' AND column_name = 'first_name') THEN
+                    ALTER TABLE users ADD COLUMN first_name VARCHAR(255);
+                END IF;
+            END $$;
+        `);
+        
+        // Проверяем и добавляем image_base64 в question_images
+        await db.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name = 'question_images' AND column_name = 'image_base64') THEN
+                    -- Если таблица существует без колонки
+                    IF EXISTS (SELECT 1 FROM information_schema.tables 
+                              WHERE table_name = 'question_images') THEN
+                        ALTER TABLE question_images ADD COLUMN image_base64 TEXT;
+                    END IF;
+                END IF;
+            END $$;
+        `);
+        
+        // Создаем таблицу question_images если она не существует
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS question_images (
+                id SERIAL PRIMARY KEY,
+                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                image_base64 TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(question_id)
+            );
+        `);
+        
+        console.log('✅ Отсутствующие колонки добавлены');
+    } catch (error) {
+        throw error;
     }
 }
 
@@ -72,7 +136,7 @@ async function sendQuestionNotification(questionId) {
     try {
         // Получаем информацию о вопросе и получателе
         const questionResult = await db.query(
-            `SELECT q.*, u.telegram_id, u.username, u.first_name 
+            `SELECT q.*, u.telegram_id, u.username
              FROM questions q
              JOIN users u ON q.to_user_id = u.telegram_id
              WHERE q.id = $1`,
@@ -92,7 +156,7 @@ async function sendQuestionNotification(questionId) {
                           `👇 *Открой приложение, чтобы ответить:*`;
         
         // Ссылка на приложение
-        const appUrl = `${WEB_APP_URL}?notification=question`;
+        const appUrl = `${WEB_APP_URL}`;
         
         try {
             await bot.telegram.sendMessage(toUserId, messageText, {
@@ -113,7 +177,7 @@ async function sendQuestionNotification(questionId) {
         }
         
     } catch (error) {
-        console.error('❌ Ошибка в sendQuestionNotification:', error);
+        console.error('❌ Ошибка в sendQuestionNotification:', error.message);
     }
 }
 
@@ -125,7 +189,6 @@ async function sendAnswerNotification(questionId) {
             `SELECT q.*, 
                     from_user.telegram_id as from_telegram_id,
                     from_user.username as from_username,
-                    from_user.first_name as from_first_name,
                     to_user.telegram_id as to_telegram_id
              FROM questions q
              LEFT JOIN users from_user ON q.from_user_id = from_user.telegram_id
@@ -173,7 +236,7 @@ async function sendAnswerNotification(questionId) {
         }
         
     } catch (error) {
-        console.error('❌ Ошибка в sendAnswerNotification:', error);
+        console.error('❌ Ошибка в sendAnswerNotification:', error.message);
     }
 }
 
@@ -204,35 +267,45 @@ app.post('/api/share-to-chat', async (req, res) => {
         const question = questionResult.rows[0];
         console.log(`✅ Найден вопрос: "${question.text.substring(0, 50)}..."`);
         
-        // 2. Проверяем кэш в БД
-        const cachedImage = await db.query(
-            `SELECT image_base64 FROM question_images WHERE question_id = $1`,
-            [questionId]
-        );
+        // 2. Проверяем кэш в БД (если таблица существует)
+        let imageBase64 = null;
+        try {
+            const cachedImage = await db.query(
+                `SELECT image_base64 FROM question_images WHERE question_id = $1`,
+                [questionId]
+            );
+            
+            if (cachedImage.rows.length > 0) {
+                imageBase64 = cachedImage.rows[0].image_base64;
+                console.log('✅ Используем кэшированную картинку');
+            }
+        } catch (cacheError) {
+            console.log('ℹ️ Таблица question_images не доступна, генерируем новую картинку');
+        }
         
-        let imageBase64;
-        if (cachedImage.rows.length > 0) {
-            imageBase64 = cachedImage.rows[0].image_base64;
-            console.log('✅ Используем кэшированную картинку');
-        } else {
-            // 3. Генерируем новую картинку
+        // 3. Генерируем новую картинку если нет в кэше
+        if (!imageBase64) {
             try {
                 console.log('🎨 Генерируем новую картинку...');
                 const imageBuffer = await generateBeautifulImage(question);
                 imageBase64 = imageBuffer.toString('base64');
                 
-                // 4. Сохраняем в БД
-                await db.query(
-                    `INSERT INTO question_images (question_id, image_base64) 
-                     VALUES ($1, $2) 
-                     ON CONFLICT (question_id) 
-                     DO UPDATE SET image_base64 = EXCLUDED.image_base64`,
-                    [questionId, imageBase64]
-                );
+                // 4. Сохраняем в БД (если таблица существует)
+                try {
+                    await db.query(
+                        `INSERT INTO question_images (question_id, image_base64) 
+                         VALUES ($1, $2) 
+                         ON CONFLICT (question_id) 
+                         DO UPDATE SET image_base64 = EXCLUDED.image_base64`,
+                        [questionId, imageBase64]
+                    );
+                    console.log('✅ Картинка сохранена в БД');
+                } catch (saveError) {
+                    console.log('ℹ️ Не удалось сохранить картинку в БД, используем без кэша');
+                }
                 
-                console.log('✅ Картинка сгенерирована и сохранена в БД');
             } catch (genError) {
-                console.error('❌ Ошибка генерации картинки:', genError);
+                console.error('❌ Ошибка генерации картинки:', genError.message);
                 // Продолжаем без картинки
                 imageBase64 = null;
             }
@@ -243,7 +316,7 @@ app.post('/api/share-to-chat', async (req, res) => {
         try {
             botInfo = await bot.telegram.getMe();
         } catch (error) {
-            console.error('❌ Ошибка получения информации о боте:', error);
+            console.error('❌ Ошибка получения информации о боте:', error.message);
             botInfo = { username: 'dota2servicebot' };
         }
         
@@ -324,7 +397,7 @@ app.post('/api/share-to-chat', async (req, res) => {
         }
         
     } catch (error) {
-        console.error('❌ Критическая ошибка шеринга:', error);
+        console.error('❌ Критическая ошибка шеринга:', error.message);
         res.status(500).json({ 
             error: 'Failed to share to chat',
             details: error.message 
@@ -332,7 +405,7 @@ app.post('/api/share-to-chat', async (req, res) => {
     }
 });
 
-// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КРАСИВОЙ КАРТИНКИ ==========
+// ========== ФУНКЦИЯ ГЕНЕРАЦИИ КАРТИНКИ ==========
 async function generateBeautifulImage(question) {
     try {
         const width = 1080;
@@ -340,26 +413,11 @@ async function generateBeautifulImage(question) {
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
         
-        // 1. Фон - градиент
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#0f172a'); // темно-синий
-        gradient.addColorStop(1, '#1e293b'); // немного светлее
-        ctx.fillStyle = gradient;
+        // 1. Фон - сплошной цвет (проще чем градиент)
+        ctx.fillStyle = '#0f172a';
         ctx.fillRect(0, 0, width, height);
         
-        // 2. Декоративные элементы
-        // Маленькие точки
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        for (let i = 0; i < 50; i++) {
-            const x = Math.random() * width;
-            const y = Math.random() * height;
-            const radius = Math.random() * 3 + 1;
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        // 3. Заголовок
+        // 2. Заголовок
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 60px "Arial"';
         ctx.textAlign = 'center';
@@ -368,7 +426,7 @@ async function generateBeautifulImage(question) {
         ctx.font = 'bold 48px "Arial"';
         ctx.fillText('Ответ на вопрос', width / 2, 200);
         
-        // 4. Разделитель
+        // 3. Разделитель
         ctx.strokeStyle = 'rgba(46, 141, 230, 0.5)';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -376,42 +434,19 @@ async function generateBeautifulImage(question) {
         ctx.lineTo(width * 0.8, 250);
         ctx.stroke();
         
-        // 5. Карточка вопроса
+        // 4. Карточка вопроса
         const cardWidth = width * 0.8;
         const cardHeight = 400;
         const cardX = (width - cardWidth) / 2;
         const cardY = 300;
         
-        // Скругленные углы для карточки (вручную)
-        const roundRect = (ctx, x, y, width, height, radius) => {
-            if (radius > width/2) radius = width/2;
-            if (radius > height/2) radius = height/2;
-            
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-        };
-        
-        // Рисуем карточку вопроса
+        // Простая карточка с закругленными углами
         ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
-        roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 20);
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 20);
         ctx.fill();
         
-        // Внутренняя рамка
-        ctx.strokeStyle = 'rgba(46, 141, 230, 0.3)';
-        ctx.lineWidth = 2;
-        roundRect(ctx, cardX + 2, cardY + 2, cardWidth - 4, cardHeight - 4, 18);
-        ctx.stroke();
-        
-        // 6. Текст вопроса
+        // 5. Текст вопроса
         ctx.fillStyle = '#93c5fd';
         ctx.font = 'bold 32px "Arial"';
         ctx.textAlign = 'left';
@@ -421,19 +456,15 @@ async function generateBeautifulImage(question) {
         ctx.font = '28px "Arial"';
         wrapText(ctx, `"${question.text}"`, cardX + 40, cardY + 110, cardWidth - 80, 40, 4);
         
-        // 7. Карточка ответа
+        // 6. Карточка ответа
         const answerCardY = cardY + cardHeight + 30;
         
         ctx.fillStyle = 'rgba(21, 128, 61, 0.8)';
-        roundRect(ctx, cardX, answerCardY, cardWidth, cardHeight, 20);
+        ctx.beginPath();
+        ctx.roundRect(cardX, answerCardY, cardWidth, cardHeight, 20);
         ctx.fill();
         
-        ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
-        ctx.lineWidth = 2;
-        roundRect(ctx, cardX + 2, answerCardY + 2, cardWidth - 4, cardHeight - 4, 18);
-        ctx.stroke();
-        
-        // 8. Текст ответа
+        // 7. Текст ответа
         ctx.fillStyle = '#86efac';
         ctx.font = 'bold 32px "Arial"';
         ctx.textAlign = 'left';
@@ -443,7 +474,7 @@ async function generateBeautifulImage(question) {
         ctx.font = '28px "Arial"';
         wrapText(ctx, `"${question.answer}"`, cardX + 40, answerCardY + 110, cardWidth - 80, 40, 4);
         
-        // 9. Призыв к действию
+        // 8. Призыв к действию
         const ctaY = answerCardY + cardHeight + 60;
         
         ctx.fillStyle = '#fbbf24';
@@ -455,16 +486,47 @@ async function generateBeautifulImage(question) {
         ctx.font = '24px "Arial"';
         ctx.fillText('t.me/dota2servicebot', width / 2, ctaY + 50);
         
-        // 10. Водяной знак
+        // 9. Водяной знак
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.font = '20px "Arial"';
         ctx.fillText('Telegram Questions', width / 2, height - 40);
         
         return canvas.toBuffer('image/png');
     } catch (error) {
-        console.error('❌ Ошибка генерации изображения:', error);
+        console.error('❌ Ошибка генерации изображения:', error.message);
         throw error;
     }
+}
+
+// Добавляем метод roundRect в контекст
+if (typeof CanvasRenderingContext2D !== 'undefined') {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        this.beginPath();
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r);
+        this.closePath();
+        return this;
+    };
+} else {
+    // Для Node.js canvas
+    const Canvas = require('canvas');
+    Canvas.CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        this.beginPath();
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r);
+        this.closePath();
+        return this;
+    };
 }
 
 // Функция для переноса текста
@@ -509,7 +571,7 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5) {
             ctx.fillText(lines[i], x, y + (i * lineHeight));
         }
     } catch (error) {
-        console.error('❌ Ошибка в wrapText:', error);
+        console.error('❌ Ошибка в wrapText:', error.message);
         // Просто выводим текст без переноса
         ctx.fillText(text.substring(0, 100) + (text.length > 100 ? '...' : ''), x, y);
     }
@@ -530,7 +592,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/user/:userId', async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT telegram_id, username, first_name FROM users WHERE telegram_id = $1`,
+            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
             [req.params.userId]
         );
         
@@ -539,16 +601,14 @@ app.get('/api/user/:userId', async (req, res) => {
         } else {
             res.json({
                 telegram_id: req.params.userId,
-                username: null,
-                first_name: null
+                username: null
             });
         }
     } catch (error) {
-        console.error('Error fetching user:', error);
+        console.error('Error fetching user:', error.message);
         res.json({
             telegram_id: req.params.userId,
-            username: null,
-            first_name: null
+            username: null
         });
     }
 });
@@ -566,7 +626,7 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
-        console.error('Error fetching incoming questions:', error);
+        console.error('Error fetching incoming questions:', error.message);
         res.json([]);
     }
 });
@@ -584,7 +644,7 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
-        console.error('Error fetching sent questions:', error);
+        console.error('Error fetching sent questions:', error.message);
         res.json([]);
     }
 });
@@ -606,7 +666,7 @@ app.get('/api/question/:id', async (req, res) => {
             res.status(404).json({ error: 'Вопрос не найден' });
         }
     } catch (error) {
-        console.error('Error fetching question:', error);
+        console.error('Error fetching question:', error.message);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -623,18 +683,15 @@ app.post('/api/questions', async (req, res) => {
         // Сохраняем отправителя в БД если он не аноним
         if (from_user_id) {
             try {
-                const userData = await fetchUserData(from_user_id);
-                if (userData) {
-                    await db.query(
-                        `INSERT INTO users (telegram_id, username, first_name) 
-                         VALUES ($1, $2, $3) 
-                         ON CONFLICT (telegram_id) 
-                         DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
-                        [from_user_id, userData.username, userData.first_name]
-                    );
-                }
+                await db.query(
+                    `INSERT INTO users (telegram_id, username) 
+                     VALUES ($1, $2) 
+                     ON CONFLICT (telegram_id) 
+                     DO UPDATE SET username = EXCLUDED.username`,
+                    [from_user_id, `user_${from_user_id}`]
+                );
             } catch (error) {
-                console.error('Ошибка сохранения отправителя:', error);
+                console.error('Ошибка сохранения отправителя:', error.message);
             }
         }
         
@@ -658,25 +715,10 @@ app.post('/api/questions', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error creating question:', error);
+        console.error('Error creating question:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
-// Получить данные пользователя из Telegram
-async function fetchUserData(userId) {
-    try {
-        // Пытаемся получить данные через API бота
-        const user = await bot.telegram.getChat(userId);
-        return {
-            username: user.username,
-            first_name: user.first_name
-        };
-    } catch (error) {
-        console.error('Ошибка получения данных пользователя:', error);
-        return null;
-    }
-}
 
 // Ответить на вопрос
 app.post('/api/questions/:id/answer', async (req, res) => {
@@ -702,11 +744,15 @@ app.post('/api/questions/:id/answer', async (req, res) => {
         
         const question = result.rows[0];
         
-        // Удаляем старую картинку из кэша
-        await db.query(
-            `DELETE FROM question_images WHERE question_id = $1`,
-            [id]
-        ).catch(() => {}); // Игнорируем ошибки если записи нет
+        // Удаляем старую картинку из кэша (если таблица существует)
+        try {
+            await db.query(
+                `DELETE FROM question_images WHERE question_id = $1`,
+                [id]
+            );
+        } catch (error) {
+            // Игнорируем ошибки если таблицы нет
+        }
         
         // Отправляем уведомление отправителю вопроса (если не аноним)
         setTimeout(() => {
@@ -719,7 +765,7 @@ app.post('/api/questions/:id/answer', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error answering question:', error);
+        console.error('Error answering question:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -729,8 +775,12 @@ app.delete('/api/questions/:id', async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Удаляем картинку из кэша
-        await db.query(`DELETE FROM question_images WHERE question_id = $1`, [id]).catch(() => {});
+        // Удаляем картинку из кэша (если таблица существует)
+        try {
+            await db.query(`DELETE FROM question_images WHERE question_id = $1`, [id]);
+        } catch (error) {
+            // Игнорируем ошибки
+        }
         
         // Удаляем вопрос
         const result = await db.query(
@@ -745,7 +795,7 @@ app.delete('/api/questions/:id', async (req, res) => {
         }
         
     } catch (error) {
-        console.error('Error deleting question:', error);
+        console.error('Error deleting question:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -784,7 +834,7 @@ app.get('/api/stats/:userId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching stats:', error.message);
         res.json({
             total: 0,
             received: 0,
@@ -807,14 +857,14 @@ bot.start(async (ctx) => {
     // Сохраняем пользователя
     try {
         await db.query(
-            `INSERT INTO users (telegram_id, username, first_name) 
-             VALUES ($1, $2, $3) 
+            `INSERT INTO users (telegram_id, username) 
+             VALUES ($1, $2) 
              ON CONFLICT (telegram_id) 
-             DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
-            [userId, username, firstName]
+             DO UPDATE SET username = EXCLUDED.username`,
+            [userId, username || `user_${userId}`]
         );
     } catch (error) {
-        console.error('Ошибка сохранения пользователя:', error);
+        console.error('Ошибка сохранения пользователя:', error.message);
     }
     
     // Если перешли по ссылке для вопроса
@@ -923,7 +973,7 @@ async function startServer() {
                 const botInfo = await bot.telegram.getMe();
                 console.log(`🤖 Бот: @${botInfo.username}`);
             } catch (error) {
-                console.error('❌ Ошибка получения информации о боте:', error);
+                console.error('❌ Ошибка получения информации о боте:', error.message);
             }
 
             if (process.env.NODE_ENV === 'production' || WEB_APP_URL.includes('render.com')) {
@@ -932,7 +982,7 @@ async function startServer() {
                     await bot.telegram.setWebhook(webhookUrl);
                     console.log(`✅ Вебхук установлен: ${webhookUrl}`);
                 } catch (error) {
-                    console.error('❌ Ошибка установки вебхука:', error);
+                    console.error('❌ Ошибка установки вебхука:', error.message);
                     console.log('🔄 Пытаемся запустить через поллинг...');
                     try {
                         await bot.launch();
