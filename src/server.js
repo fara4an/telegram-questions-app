@@ -24,8 +24,9 @@ async function initDB() {
         await db.connect();
         console.log('✅ База данных подключена');
         
-        // Создаем таблицы
+        // Создаем таблицы с полной структурой
         await db.query(`
+            -- Таблица пользователей
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
@@ -33,10 +34,11 @@ async function initDB() {
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_super_admin BOOLEAN DEFAULT FALSE,
                 invited_by BIGINT,
-                referral_code VARCHAR(50) UNIQUE,
+                referral_code VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
+            -- Таблица вопросов
             CREATE TABLE IF NOT EXISTS questions (
                 id SERIAL PRIMARY KEY,
                 from_user_id BIGINT,
@@ -48,6 +50,7 @@ async function initDB() {
                 answered_at TIMESTAMP
             );
             
+            -- Таблица реферальных ссылок
             CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
                 admin_id BIGINT NOT NULL,
@@ -57,22 +60,71 @@ async function initDB() {
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
-            CREATE INDEX IF NOT EXISTS idx_questions_to_user ON questions(to_user_id);
-            CREATE INDEX IF NOT EXISTS idx_questions_from_user ON questions(from_user_id);
-            CREATE INDEX IF NOT EXISTS idx_questions_answered ON questions(is_answered);
-            CREATE INDEX IF NOT EXISTS idx_users_admin ON users(is_admin);
-            CREATE INDEX IF NOT EXISTS idx_users_invited_by ON users(invited_by);
-            CREATE INDEX IF NOT EXISTS idx_referrals_admin ON referrals(admin_id);
         `);
         
-        console.log('✅ Таблицы созданы/обновлены');
+        console.log('✅ Таблицы созданы/проверены');
+        
+        // Добавляем недостающие колонки в существующие таблицы
+        await addMissingColumns();
         
         // Проверяем и создаем главного админа
         await ensureMainAdmin();
         
     } catch (error) {
         console.error('❌ Ошибка БД:', error.message);
+    }
+}
+
+// Добавляем недостающие колонки
+async function addMissingColumns() {
+    try {
+        // Добавляем колонки в таблицу users если их нет
+        const userColumns = await db.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users'
+        `);
+        
+        const existingColumns = userColumns.rows.map(row => row.column_name);
+        
+        if (!existingColumns.includes('is_admin')) {
+            await db.query(`ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE`);
+            console.log('✅ Добавлена колонка is_admin');
+        }
+        
+        if (!existingColumns.includes('is_super_admin')) {
+            await db.query(`ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE`);
+            console.log('✅ Добавлена колонка is_super_admin');
+        }
+        
+        if (!existingColumns.includes('invited_by')) {
+            await db.query(`ALTER TABLE users ADD COLUMN invited_by BIGINT`);
+            console.log('✅ Добавлена колонка invited_by');
+        }
+        
+        if (!existingColumns.includes('referral_code')) {
+            await db.query(`ALTER TABLE users ADD COLUMN referral_code VARCHAR(50)`);
+            console.log('✅ Добавлена колонка referral_code');
+        }
+        
+        // Проверяем таблицу questions
+        const questionColumns = await db.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'questions'
+        `);
+        
+        const existingQuestionColumns = questionColumns.rows.map(row => row.column_name);
+        
+        if (!existingQuestionColumns.includes('answered_at')) {
+            await db.query(`ALTER TABLE questions ADD COLUMN answered_at TIMESTAMP`);
+            console.log('✅ Добавлена колонка answered_at');
+        }
+        
+        console.log('✅ Структура БД обновлена');
+        
+    } catch (error) {
+        console.error('❌ Ошибка добавления колонок:', error.message);
     }
 }
 
@@ -164,10 +216,6 @@ app.get('/api/admin/stats', async (req, res) => {
             SELECT COUNT(DISTINCT from_user_id) as count 
             FROM questions 
             WHERE created_at >= CURRENT_DATE
-            UNION ALL
-            SELECT COUNT(DISTINCT to_user_id) 
-            FROM questions 
-            WHERE created_at >= CURRENT_DATE
         `);
         
         // Статистика по пользователям (только для супер-админа)
@@ -232,7 +280,7 @@ app.get('/api/admin/stats', async (req, res) => {
                 totalUsers: parseInt(totalUsers.rows[0].count),
                 totalQuestions: parseInt(totalQuestions.rows[0].count),
                 answeredQuestions: parseInt(answeredQuestions.rows[0].count),
-                activeToday: parseInt(activeToday.rows[0].count) + parseInt(activeToday.rows[1]?.count || 0),
+                activeToday: parseInt(activeToday.rows[0].count),
                 isSuperAdmin: isSuper,
                 isAdmin: isAdm
             },
@@ -806,6 +854,15 @@ app.get('/api/stats/:userId', async (req, res) => {
     }
 });
 
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'Telegram Questions API'
+    });
+});
+
 // ========== TELEGRAM BOT ==========
 app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
     bot.handleUpdate(req.body, res);
@@ -842,7 +899,7 @@ bot.start(async (ctx) => {
         }
     }
     
-    // Сохраняем пользователя
+    // Сохраняем пользователя (с обработкой ошибок)
     try {
         await db.query(
             `INSERT INTO users (telegram_id, username, invited_by, referral_code) 
@@ -855,6 +912,7 @@ bot.start(async (ctx) => {
         );
     } catch (error) {
         console.error('Ошибка сохранения пользователя:', error.message);
+        // Продолжаем работу даже если сохранение не удалось
     }
     
     // Если перешли по ссылке для вопроса
@@ -886,13 +944,17 @@ bot.start(async (ctx) => {
         let welcomeText = `👋 Привет, ${firstName}!\n\nЯ бот для анонимных вопросов.\n\n🔗 *Твоя персональная ссылка:*\n\`${userLink}\`\n\n📤 *Отправь эту ссылку друзьям!*\nОни смогут задать тебе вопрос *анонимно*!`;
         
         // Если пользователь админ, показываем дополнительную информацию
-        const userRole = await db.query(
-            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        if (userRole.rows.length > 0 && (userRole.rows[0].is_admin || userRole.rows[0].is_super_admin)) {
-            welcomeText += `\n\n🎯 *Вы являетесь администратором!*\nОткройте приложение для доступа к админ-панели.`;
+        try {
+            const userRole = await db.query(
+                `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
+                [userId]
+            );
+            
+            if (userRole.rows.length > 0 && (userRole.rows[0].is_admin || userRole.rows[0].is_super_admin)) {
+                welcomeText += `\n\n🎯 *Вы являетесь администратором!*\nОткройте приложение для доступа к админ-панели.`;
+            }
+        } catch (error) {
+            // Игнорируем ошибку проверки роли
         }
         
         await ctx.reply(welcomeText, {
@@ -951,36 +1013,41 @@ bot.command('app', (ctx) => {
 bot.command('admin', async (ctx) => {
     const userId = ctx.from.id;
     
-    const userRole = await db.query(
-        `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
-        [userId]
-    );
-    
-    if (userRole.rows.length === 0 || (!userRole.rows[0].is_admin && !userRole.rows[0].is_super_admin)) {
-        return ctx.reply('⛔ У вас нет прав доступа к админ-панели.');
-    }
-    
-    ctx.reply(
-        `🛠️ *Админ-панель*\n\n` +
-        `Вы являетесь администратором бота.\n` +
-        `Для доступа к статистике и управлению откройте приложение.\n\n` +
-        `*Доступные функции:*\n` +
-        `📊 - Просмотр статистики\n` +
-        `👥 - Управление пользователями\n` +
-        `🔗 - Создание реферальных ссылок\n` +
-        `👑 - Назначение админов (только для главного админа)`,
-        {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[
-                    {
-                        text: '📱 ОТКРЫТЬ АДМИН-ПАНЕЛЬ',
-                        web_app: { url: WEB_APP_URL }
-                    }
-                ]]
-            }
+    try {
+        const userRole = await db.query(
+            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        
+        if (userRole.rows.length === 0 || (!userRole.rows[0].is_admin && !userRole.rows[0].is_super_admin)) {
+            return ctx.reply('⛔ У вас нет прав доступа к админ-панели.');
         }
-    );
+        
+        ctx.reply(
+            `🛠️ *Админ-панель*\n\n` +
+            `Вы являетесь администратором бота.\n` +
+            `Для доступа к статистике и управлению откройте приложение.\n\n` +
+            `*Доступные функции:*\n` +
+            `📊 - Просмотр статистики\n` +
+            `👥 - Управление пользователями\n` +
+            `🔗 - Создание реферальных ссылок\n` +
+            `👑 - Назначение админов (только для главного админа)`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        {
+                            text: '📱 ОТКРЫТЬ АДМИН-ПАНЕЛЬ',
+                            web_app: { url: WEB_APP_URL }
+                        }
+                    ]]
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Ошибка проверки админских прав:', error.message);
+        ctx.reply('❌ Ошибка проверки прав доступа. Попробуйте позже.');
+    }
 });
 
 // ========== СТАТИЧЕСКИЕ СТРАНИЦЫ ==========
