@@ -225,17 +225,30 @@ async function generateBeautifulImage(question) {
     const cardX = (width - cardWidth) / 2;
     const cardY = 300;
     
-    // Скругленные углы для карточки
+    // Скругленные углы для карточки (вручную)
+    const roundRect = (ctx, x, y, width, height, radius) => {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    };
+    
+    // Рисуем карточку вопроса
     ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
-    ctx.beginPath();
-    ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 20);
+    roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 20);
     ctx.fill();
     
     // Внутренняя рамка
     ctx.strokeStyle = 'rgba(46, 141, 230, 0.3)';
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(cardX + 2, cardY + 2, cardWidth - 4, cardHeight - 4, 18);
+    roundRect(ctx, cardX + 2, cardY + 2, cardWidth - 4, cardHeight - 4, 18);
     ctx.stroke();
     
     // 6. Текст вопроса
@@ -252,14 +265,12 @@ async function generateBeautifulImage(question) {
     const answerCardY = cardY + cardHeight + 30;
     
     ctx.fillStyle = 'rgba(21, 128, 61, 0.8)';
-    ctx.beginPath();
-    ctx.roundRect(cardX, answerCardY, cardWidth, cardHeight, 20);
+    roundRect(ctx, cardX, answerCardY, cardWidth, cardHeight, 20);
     ctx.fill();
     
     ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(cardX + 2, answerCardY + 2, cardWidth - 4, cardHeight - 4, 18);
+    roundRect(ctx, cardX + 2, answerCardY + 2, cardWidth - 4, cardHeight - 4, 18);
     ctx.stroke();
     
     // 8. Текст ответа
@@ -333,20 +344,6 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5) {
         ctx.fillText(lines[i], x, y + (i * lineHeight));
     }
 }
-
-// Добавляем метод roundRect в CanvasRenderingContext2D
-CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-    if (w < 2 * r) r = w / 2;
-    if (h < 2 * r) r = h / 2;
-    this.beginPath();
-    this.moveTo(x + r, y);
-    this.arcTo(x + w, y, x + w, y + h, r);
-    this.arcTo(x + w, y + h, x, y + h, r);
-    this.arcTo(x, y + h, x, y, r);
-    this.arcTo(x, y, x + w, y, r);
-    this.closePath();
-    return this;
-};
 
 // ========== ОСТАЛЬНЫЕ API ==========
 
@@ -665,6 +662,19 @@ bot.command('help', (ctx) => {
     );
 });
 
+bot.command('app', (ctx) => {
+    ctx.reply('Нажми кнопку ниже, чтобы открыть приложение:', {
+        reply_markup: {
+            inline_keyboard: [[
+                {
+                    text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                    web_app: { url: WEB_APP_URL }
+                }
+            ]]
+        }
+    });
+});
+
 // ========== СТАТИЧЕСКИЕ СТРАНИЦЫ ==========
 app.get('/ask/:userId', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/ask.html'));
@@ -686,13 +696,23 @@ async function startServer() {
             console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
 
             // Получаем username бота
-            const botInfo = await bot.telegram.getMe();
-            console.log(`🤖 Бот: @${botInfo.username}`);
+            try {
+                const botInfo = await bot.telegram.getMe();
+                console.log(`🤖 Бот: @${botInfo.username}`);
+            } catch (error) {
+                console.error('❌ Ошибка получения информации о боте:', error);
+            }
 
             if (process.env.NODE_ENV === 'production') {
-                const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
-                await bot.telegram.setWebhook(webhookUrl);
-                console.log(`✅ Вебхук установлен: ${webhookUrl}`);
+                try {
+                    const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
+                    await bot.telegram.setWebhook(webhookUrl);
+                    console.log(`✅ Вебхук установлен: ${webhookUrl}`);
+                } catch (error) {
+                    console.error('❌ Ошибка установки вебхука:', error);
+                    console.log('🔄 Пытаемся запустить через поллинг...');
+                    await bot.launch();
+                }
             } else {
                 await bot.launch();
                 console.log('🤖 Бот запущен через поллинг');
