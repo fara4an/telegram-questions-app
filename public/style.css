@@ -1,277 +1,1242 @@
-/* Обновленный стиль для кнопок на мобильных */
-@media (max-width: 480px) {
-    .btn-group {
-        flex-direction: column;
-        gap: 8px;
-    }
-    
-    .btn-group .btn {
-        width: 100%;
-        margin: 0 !important;
-    }
-    
-    .question-card {
-        padding: 12px;
-    }
-    
-    .question-meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-    }
-    
-    .question-from {
-        align-self: flex-start;
-        margin-top: 4px;
-    }
-    
-    .question-text {
-        font-size: 14px;
-        padding: 10px;
-    }
-    
-    .answer-bubble {
-        padding: 12px;
-    }
-    
-    .modal-content {
-        margin: 10px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-    
-    .modal-footer {
-        flex-direction: column;
-        gap: 8px;
-    }
-    
-    .modal-footer .btn {
-        width: 100%;
-    }
-    
-    /* Улучшенные вкладки на мобильных */
-    .tabs {
-        overflow-x: auto;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-        padding: 0 10px;
-    }
-    
-    .tab {
-        padding: 14px 8px;
-        font-size: 14px;
-    }
-    
-    /* Улучшенная статистика на мобильных */
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-    }
-    
-    .stat-card {
-        padding: 12px;
-    }
-    
-    .stat-number {
-        font-size: 20px;
-    }
-    
-    .stat-label {
-        font-size: 11px;
-    }
-    
-    /* Улучшенные таблицы на мобильных */
-    .users-table {
-        font-size: 12px;
-    }
-    
-    .users-table th,
-    .users-table td {
-        padding: 6px 8px;
-    }
-    
-    /* Улучшенные модальные окна на мобильных */
-    .modal-overlay {
-        padding: 10px;
-        align-items: flex-start;
-        padding-top: 60px;
-    }
-    
-    /* Улучшенный шрифт для полей ввода */
-    input, textarea, select {
-        font-size: 16px !important;
-    }
-    
-    /* Улучшенные кнопки действий */
-    .btn-action {
-        padding: 6px 10px !important;
-        font-size: 12px !important;
-        border-radius: 6px !important;
-    }
-    
-    /* Улучшенный заголовок */
-    .header h1 {
-        font-size: 18px;
-    }
-    
-    /* Улучшенный аватар */
-    .user-avatar {
-        width: 36px;
-        height: 36px;
-        font-size: 16px;
-    }
-    
-    /* Улучшенное имя пользователя */
-    .username {
-        font-size: 14px;
-    }
-    
-    .user-id {
-        font-size: 11px;
-    }
-    
-    /* Улучшенный бейдж */
-    .badge {
-        top: 6px;
-        right: 6px;
-        font-size: 10px;
-        min-width: 16px;
-        height: 16px;
-    }
+/* Telegram-like styles */
+:root {
+  --tg-bg-color: #0f0f0f;
+  --tg-secondary-bg: #1a1a1a;
+  --tg-text-color: #e1e1e1;
+  --tg-secondary-text: #999;
+  --tg-accent-color: #2e8de6;
+  --tg-accent-hover: #1a7cd6;
+  --tg-border-color: #2d2d2d;
+  --tg-input-bg: #242424;
+  --tg-bubble-incoming: #242424;
+  --tg-bubble-outgoing: #2e8de6;
+  --tg-bubble-text-outgoing: white;
+  --tg-danger: #e53935;
+  --tg-success: #4caf50;
+  --tg-warning: #ff9800;
+  --tg-radius: 12px;
+  --tg-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
-@media (max-width: 360px) {
-    .header {
-        padding: 10px 12px;
-    }
-    
-    .header h1 {
-        font-size: 16px;
-    }
-    
-    .user-info {
-        padding: 8px;
-    }
-    
-    .tab {
-        padding: 12px 6px;
-        font-size: 13px;
-    }
-    
-    .questions-list {
-        padding: 10px;
-    }
-    
-    .question-card {
-        margin-bottom: 8px;
-    }
-    
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .modal-content {
-        margin: 5px;
-        border-radius: 12px;
-    }
-    
-    .modal-header {
-        padding: 15px;
-    }
-    
-    .modal-body {
-        padding: 15px;
-    }
-    
-    .modal-footer {
-        padding: 15px;
-    }
+/* ОСНОВНЫЕ СТИЛИ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/* Стили для очень маленьких экранов */
-@media (max-width: 320px) {
-    .tab {
-        padding: 10px 4px;
-        font-size: 12px;
-    }
-    
-    .question-card {
-        padding: 10px;
-    }
-    
-    .btn {
-        padding: 10px 12px;
-        font-size: 13px;
-    }
-    
-    .modal-header h3 {
-        font-size: 16px;
-    }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  min-height: 100vh;
+  overflow-x: hidden;
 }
 
-/* Улучшенный скролл на мобильных */
-.tab-content {
-    -webkit-overflow-scrolling: touch;
-    scroll-behavior: smooth;
-}
-
-/* Улучшенные поля ввода для iOS */
-input[type="text"],
-input[type="number"],
-textarea {
-    -webkit-appearance: none;
-    appearance: none;
-    border-radius: var(--tg-radius);
-}
-
-/* Улучшенные кнопки для тач-устройств */
-.btn {
-    touch-action: manipulation;
-    min-height: 44px; /* Минимальная высота для удобного тапа */
-}
-
-/* Улучшенные переключатели для мобильных */
-input[type="radio"],
-input[type="checkbox"] {
-    min-width: 20px;
-    min-height: 20px;
-}
-
-/* Улучшенные аватары пользователей */
-.user-avatar {
-    flex-shrink: 0;
-}
-
-/* Улучшенный контейнер приложения */
+/* КОНТЕЙНЕР ПРИЛОЖЕНИЯ */
 .app-container {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+  max-width: 100%;
+  min-height: 100vh;
+  background: var(--tg-bg-color);
+  display: flex;
+  flex-direction: column;
 }
 
-/* Улучшенный контент вкладок */
+/* ШАПКА - Telegram-like */
+.header {
+  background: var(--tg-secondary-bg);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--tg-border-color);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  background: rgba(26, 26, 26, 0.9);
+}
+
+.header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--tg-text-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header h1::before {
+  content: "💬";
+  font-size: 24px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-border-color);
+}
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, var(--tg-accent-color), #6c5ce7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.user-details {
+  flex: 1;
+  overflow: hidden;
+}
+
+.username {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tg-text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-id {
+  font-size: 13px;
+  color: var(--tg-secondary-text);
+  margin-top: 2px;
+}
+
+/* ВКЛАДКИ - Telegram-style */
+.tabs {
+  display: flex;
+  background: var(--tg-secondary-bg);
+  border-bottom: 1px solid var(--tg-border-color);
+  padding: 0 20px;
+  position: sticky;
+  top: 81px;
+  z-index: 90;
+  backdrop-filter: blur(10px);
+  background: rgba(26, 26, 26, 0.95);
+}
+
+.tab {
+  flex: 1;
+  padding: 16px 12px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--tg-secondary-text);
+  position: relative;
+  transition: all 0.2s ease;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab.active {
+  color: var(--tg-accent-color);
+  font-weight: 600;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 3px;
+  background: var(--tg-accent-color);
+  border-radius: 3px 3px 0 0;
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--tg-danger);
+  color: white;
+  border-radius: 10px;
+  min-width: 20px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+
+/* КОНТЕНТ ВКЛАДОК */
 .tab-content {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 60px;
 }
 
-/* Улучшенный статус бар */
+.page {
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.page.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* СПИСКИ ВОПРОСОВ - Telegram Bubbles */
+.questions-list {
+  padding: 16px;
+}
+
+.question-card {
+  background: var(--tg-bubble-incoming);
+  border-radius: var(--tg-radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--tg-border-color);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.question-card:hover {
+  background: #2a2a2a;
+  transform: translateY(-2px);
+  box-shadow: var(--tg-shadow);
+}
+
+.question-card.sent {
+  background: rgba(46, 141, 230, 0.1);
+  border: 1px solid rgba(46, 141, 230, 0.3);
+}
+
+.question-card.answered {
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.question-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--tg-accent-color);
+}
+
+.question-card.sent::before {
+  background: var(--tg-accent-color);
+}
+
+.question-card.answered::before {
+  background: var(--tg-success);
+}
+
+.question-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--tg-secondary-text);
+}
+
+.question-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.question-date::before {
+  content: '🕒';
+  font-size: 12px;
+}
+
+.question-from {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.question-text {
+  font-size: 15px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  border-left: 3px solid var(--tg-accent-color);
+}
+
+.answer-bubble {
+  background: rgba(46, 141, 230, 0.15);
+  padding: 14px;
+  border-radius: 10px;
+  margin: 12px 0;
+  border-left: 3px solid var(--tg-accent-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.answer-bubble::before {
+  content: '💬';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0.2;
+  font-size: 20px;
+}
+
+.answer-bubble strong {
+  color: var(--tg-accent-color);
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+/* КНОПКИ - Telegram-style */
+.btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--tg-accent-color);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--tg-accent-hover);
+  box-shadow: 0 4px 15px rgba(46, 141, 230, 0.3);
+}
+
+.btn-success {
+  background: var(--tg-success);
+  color: white;
+}
+
+.btn-success:hover {
+  background: #43a047;
+  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+}
+
+.btn-danger {
+  background: var(--tg-danger);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #d32f2f;
+  box-shadow: 0 4px 15px rgba(229, 57, 53, 0.3);
+}
+
+.btn-secondary {
+  background: var(--tg-input-bg);
+  color: var(--tg-text-color);
+  border: 1px solid var(--tg-border-color);
+}
+
+.btn-secondary:hover {
+  background: #2d2d2d;
+}
+
+.btn-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.btn-group .btn {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* ПРОФИЛЬ */
+.profile-section {
+  padding: 20px;
+}
+
+.profile-info {
+  background: var(--tg-secondary-bg);
+  padding: 20px;
+  border-radius: var(--tg-radius);
+  margin-bottom: 20px;
+  border: 1px solid var(--tg-border-color);
+}
+
+.profile-info p {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-info strong {
+  color: var(--tg-accent-color);
+  min-width: 60px;
+}
+
+.share-section {
+  background: var(--tg-secondary-bg);
+  padding: 20px;
+  border-radius: var(--tg-radius);
+  margin-bottom: 20px;
+  border: 1px solid var(--tg-border-color);
+}
+
+.share-section h3 {
+  margin-bottom: 15px;
+  color: var(--tg-text-color);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.share-section h3::before {
+  content: "🔗";
+}
+
+.share-link {
+  background: var(--tg-input-bg);
+  padding: 15px;
+  border-radius: 10px;
+  margin: 15px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--tg-border-color);
+  gap: 12px;
+}
+
+.share-link code {
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--tg-accent-color);
+  flex: 1;
+}
+
+.share-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.share-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px;
+  background: var(--tg-input-bg);
+  border: 1px solid var(--tg-border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.share-btn:hover {
+  background: #2d2d2d;
+  transform: translateY(-2px);
+}
+
+.share-btn .icon {
+  font-size: 24px;
+}
+
+.share-btn .label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.stat-card {
+  background: var(--tg-secondary-bg);
+  padding: 20px;
+  border-radius: var(--tg-radius);
+  text-align: center;
+  border: 1px solid var(--tg-border-color);
+  transition: all 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--tg-shadow);
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--tg-accent-color);
+  margin-bottom: 5px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--tg-secondary-text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* МОДАЛЬНОЕ ОКНО - Telegram-style */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(5px);
+}
+
+.modal.active {
+  display: flex;
+  animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(5px);
+  }
+}
+
+.modal-content {
+  background: var(--tg-secondary-bg);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--tg-border-color);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--tg-border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--tg-bg-color);
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tg-text-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: var(--tg-secondary-text);
+  font-size: 28px;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.btn-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--tg-text-color);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid var(--tg-border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: var(--tg-bg-color);
+}
+
+/* МОДАЛКА ВЫБОРА ШЕРИНГА */
+.share-modal .modal-content {
+  max-width: 400px;
+}
+
+.share-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.share-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px 15px;
+  background: var(--tg-input-bg);
+  border: 2px solid var(--tg-border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  gap: 12px;
+}
+
+.share-option:hover {
+  background: #2d2d2d;
+  border-color: var(--tg-accent-color);
+  transform: translateY(-3px);
+}
+
+.share-option.active {
+  background: rgba(46, 141, 230, 0.1);
+  border-color: var(--tg-accent-color);
+}
+
+.share-option .icon {
+  font-size: 32px;
+}
+
+.share-option .label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.share-option .description {
+  font-size: 12px;
+  color: var(--tg-secondary-text);
+  margin-top: 5px;
+}
+
+/* СТАТУС БАР */
 .status-bar {
+  background: var(--tg-secondary-bg);
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tg-secondary-text);
+  border-top: 1px solid var(--tg-border-color);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tg-success);
+}
+
+.status-dot.error {
+  background: var(--tg-danger);
+}
+
+.status-dot.loading {
+  background: var(--tg-warning);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ЗАГРУЗКА */
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--tg-secondary-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid var(--tg-border-color);
+  border-top-color: var(--tg-accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ПУСТОЕ СОСТОЯНИЕ */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--tg-secondary-text);
+}
+
+.empty-state .icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tg-text-color);
+  margin-bottom: 10px;
+}
+
+.empty-state p {
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 300px;
+  margin: 0 auto 20px;
+}
+
+/* ТЕКСТАРЕА И ФОРМЫ - для ask.html */
+.ask-form-container {
+  padding: 20px;
+}
+
+.ask-form-container textarea {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--tg-border-color);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 16px;
+  background: var(--tg-input-bg);
+  color: var(--tg-text-color);
+  transition: all 0.2s;
+  min-height: 120px;
+}
+
+.ask-form-container textarea:focus {
+  outline: none;
+  border-color: var(--tg-accent-color);
+  box-shadow: 0 0 0 2px rgba(46, 141, 230, 0.2);
+}
+
+.ask-form-container textarea::placeholder {
+  color: var(--tg-secondary-text);
+}
+
+.ask-form-container .char-counter-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--tg-secondary-text);
+}
+
+.ask-form-container .char-counter-wrapper.limit {
+  color: var(--tg-danger);
+}
+
+.ask-form-container .form-notice {
+  background: rgba(46, 141, 230, 0.1);
+  border: 1px solid rgba(46, 141, 230, 0.3);
+  border-radius: var(--tg-radius);
+  padding: 16px;
+  margin: 20px 0;
+}
+
+.ask-form-container .form-notice ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ask-form-container .form-notice li {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.ask-form-container .form-notice li::before {
+  content: "✓";
+  color: var(--tg-accent-color);
+  flex-shrink: 0;
+}
+
+.target-user-card {
+  background: var(--tg-secondary-bg);
+  padding: 20px;
+  margin: 20px;
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-border-color);
+  text-align: center;
+}
+
+.target-user-card h2 {
+  color: var(--tg-text-color);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.target-user-card h2::before {
+  content: "👤";
+}
+
+.target-user-id {
+  color: var(--tg-accent-color);
+  font-family: monospace;
+  font-size: 16px;
+  background: rgba(46, 141, 230, 0.1);
+  padding: 8px 16px;
+  border-radius: 20px;
+  display: inline-block;
+  margin-top: 10px;
+}
+
+/* РЕЗУЛЬТАТ ОТПРАВКИ ВОПРОСА */
+.result-message {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: var(--tg-radius);
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.result-success {
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.result-error {
+  background: rgba(229, 57, 53, 0.1);
+  border: 1px solid rgba(229, 57, 53, 0.3);
+}
+
+/* ПОПАП УВЕДОМЛЕНИЙ */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: var(--tg-secondary-bg);
+  border: 1px solid var(--tg-border-color);
+  box-shadow: var(--tg-shadow);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 400px;
+  animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
+  transform: translateX(0);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+.notification.success {
+  border-left: 4px solid var(--tg-success);
+}
+
+.notification.error {
+  border-left: 4px solid var(--tg-danger);
+}
+
+.notification.warning {
+  border-left: 4px solid var(--tg-warning);
+}
+
+.notification-icon {
+  font-size: 20px;
+}
+
+/* АДАПТИВНОСТЬ */
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 18px;
+  }
+  
+  .tab {
+    padding: 14px 8px;
+    font-size: 14px;
+  }
+  
+  .btn-group {
+    flex-direction: column;
+  }
+  
+  .btn-group .btn {
+    width: 100%;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .modal-content {
+    margin: 10px;
+  }
+  
+  .share-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .share-buttons {
+    grid-template-columns: 1fr;
+  }
+  
+  .target-user-card {
+    margin: 16px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 12px 16px;
+  }
+  
+  .user-info {
+    padding: 10px;
+  }
+  
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+  
+  .questions-list {
+    padding: 12px;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* SCROLLBAR STYLING */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--tg-bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--tg-border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--tg-secondary-text);
+}
+
+/* Стили для страницы ask.html */
+.target-user-card {
+    background: var(--tg-secondary-bg);
+    padding: 20px;
+    margin: 16px;
+    border-radius: var(--tg-radius);
+    border: 1px solid var(--tg-border-color);
+    text-align: center;
+}
+
+.ask-form-container {
+    padding: 0 16px 20px;
+}
+
+.ask-form-container textarea {
+    width: 100%;
+    padding: 16px;
+    border: 1px solid var(--tg-border-color);
+    border-radius: 12px;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 16px;
+    background: var(--tg-input-bg);
+    color: var(--tg-text-color);
+    transition: all 0.2s;
+    min-height: 120px;
+}
+
+.ask-form-container textarea:focus {
+    outline: none;
+    border-color: var(--tg-accent-color);
+    box-shadow: 0 0 0 2px rgba(46, 141, 230, 0.2);
+}
+
+.ask-form-container textarea::placeholder {
+    color: var(--tg-secondary-text);
+}
+
+.char-counter-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--tg-secondary-text);
+}
+
+.form-notice {
+    background: rgba(46, 141, 230, 0.1);
+    border: 1px solid rgba(46, 141, 230, 0.3);
+    border-radius: var(--tg-radius);
+    padding: 16px;
+    margin: 20px 0;
+}
+
+.form-notice ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.form-notice li {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.form-notice li::before {
+    content: "✓";
+    color: var(--tg-accent-color);
     flex-shrink: 0;
 }
 
-/* Улучшенная адаптивность для модальных окон */
-@media (max-height: 600px) {
-    .modal-overlay {
-        padding-top: 40px;
-    }
-    
-    .modal-content {
-        max-height: calc(100vh - 80px);
-    }
+.result-message {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: var(--tg-radius);
+    text-align: center;
+    animation: fadeIn 0.3s ease;
 }
 
-/* Улучшенные стили для причин жалоб */
+.result-success {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.result-error {
+    background: rgba(229, 57, 53, 0.1);
+    border: 1px solid rgba(229, 57, 53, 0.3);
+}
+
+/* Добавить в style.css */
+.share-option-btn:hover {
+    background: #2d2d2d;
+    border-color: var(--tg-accent-color);
+    transform: translateY(-2px);
+}
+
+/* Стили для системы жалоб и ограничений доступа */
+.access-restricted {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--tg-bg-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 10000;
+}
+
+.restricted-content {
+    background: var(--tg-secondary-bg);
+    border-radius: 20px;
+    padding: 40px 30px;
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
+    border: 1px solid var(--tg-border-color);
+    box-shadow: var(--tg-shadow);
+}
+
+.restricted-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    opacity: 0.8;
+}
+
+.restricted-content h2 {
+    color: var(--tg-text-color);
+    margin-bottom: 15px;
+    font-size: 24px;
+}
+
+.restricted-content p {
+    color: var(--tg-secondary-text);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.channel-info {
+    background: rgba(46, 141, 230, 0.1);
+    border: 1px solid rgba(46, 141, 230, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 20px 0;
+    font-size: 18px;
+}
+
+.tos-preview {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.tos-preview h3 {
+    color: var(--tg-text-color);
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.tos-preview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tos-preview li {
+    color: var(--tg-secondary-text);
+    margin-bottom: 8px;
+    padding-left: 20px;
+    position: relative;
+}
+
+.tos-preview li::before {
+    content: "•";
+    color: var(--tg-accent-color);
+    position: absolute;
+    left: 0;
+}
+
+.actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.actions .btn {
+    min-width: 180px;
+}
+
+.report-btn-small {
+    background: none;
+    border: none;
+    color: var(--tg-warning);
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.report-btn-small:hover {
+    background: rgba(255, 152, 0, 0.1);
+}
+
+/* Стили для причин жалоб (добавить в конец) */
 .report-reason-item {
     background: var(--tg-input-bg);
     border: 1px solid var(--tg-border-color);
@@ -322,92 +1287,43 @@ input[type="checkbox"] {
     line-height: 1.4;
 }
 
-/* Улучшенные стили для таблиц на мобильных */
-.users-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    margin: 0 -16px;
-    padding: 0 16px;
-}
-
-.users-table {
-    min-width: 600px;
-}
-
-/* Улучшенные стили для кнопок в таблицах */
-.btn-action {
-    background: var(--tg-accent-color);
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
-
-.btn-action:hover {
-    background: var(--tg-accent-hover);
-    transform: translateY(-1px);
-}
-
-.btn-action.danger {
-    background: var(--tg-danger);
-}
-
-.btn-action.danger:hover {
-    background: #d32f2f;
-}
-
-/* Улучшенные стили для пустых состояний */
-.empty-state {
-    padding: 60px 20px;
-    text-align: center;
-}
-
-.empty-state .icon {
-    font-size: 48px;
-    margin-bottom: 20px;
-    opacity: 0.5;
-}
-
-.empty-state h3 {
-    font-size: 18px;
-    margin-bottom: 10px;
-    color: var(--tg-text-color);
-}
-
-.empty-state p {
-    font-size: 14px;
-    color: var(--tg-secondary-text);
-    margin-bottom: 20px;
-    line-height: 1.5;
-}
-
-/* Улучшенные стили для загрузки */
-.loading {
-    padding: 60px 20px;
-    text-align: center;
-}
-
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--tg-border-color);
-    border-top-color: var(--tg-accent-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-}
-
-.loading p {
-    color: var(--tg-secondary-text);
-    font-size: 14px;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
+/* АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ */
+@media (max-width: 480px) {
+    .btn-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .btn-group .btn {
+        width: 100%;
+        margin: 0;
+    }
+    
+    .question-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .question-from {
+        align-self: flex-start;
+        margin-top: 4px;
+    }
+    
+    .modal-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
+    
+    .report-reason-item {
+        padding: 12px;
+    }
+    
+    .report-reason-item label {
+        font-size: 13px;
     }
 }
