@@ -2,220 +2,162 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>💬 Анонимные вопросы</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Дополнительные стили для красивой модалки ответа */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(15, 15, 15, 0.95);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+        /* Дополнительные стили для адаптивности */
+        @media (max-width: 480px) {
+            .btn-group {
+                flex-direction: column !important;
+            }
+            
+            .btn-group .btn {
+                width: 100% !important;
+                margin-bottom: 8px !important;
+            }
+            
+            .question-meta {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 8px !important;
+            }
+            
+            .question-from {
+                align-self: flex-start !important;
+            }
+            
+            .modal-content {
+                margin: 10px !important;
+                max-height: 90vh !important;
+            }
+            
+            .modal-footer {
+                flex-direction: column !important;
+                gap: 8px !important;
+            }
+            
+            .modal-footer .btn {
+                width: 100% !important;
+            }
+            
+            .report-reason-item {
+                padding: 12px !important;
+            }
+            
+            .report-reason-item label {
+                font-size: 14px !important;
+            }
+            
+            .users-table {
+                font-size: 12px !important;
+            }
+            
+            .users-table th,
+            .users-table td {
+                padding: 6px 8px !important;
+            }
         }
         
-        .modal-overlay.active {
-            display: flex;
-            animation: fadeIn 0.3s ease;
+        @media (max-width: 360px) {
+            .header h1 {
+                font-size: 18px !important;
+            }
+            
+            .tab {
+                padding: 12px 6px !important;
+                font-size: 13px !important;
+            }
+            
+            .badge {
+                top: 4px !important;
+                right: 4px !important;
+                font-size: 10px !important;
+                min-width: 16px !important;
+                height: 16px !important;
+            }
+            
+            .question-text {
+                font-size: 14px !important;
+                padding: 10px !important;
+            }
+            
+            .answer-bubble {
+                padding: 10px !important;
+            }
         }
         
-        .answer-modal {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            border-radius: 20px;
-            width: 100%;
-            max-width: 500px;
-            border: 1px solid #3d3d3d;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            overflow: hidden;
-        }
-        
-        .modal-header {
-            background: linear-gradient(135deg, #2e8de6 0%, #1a7cd6 100%);
-            padding: 25px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .modal-header h3 {
-            margin: 0;
-            color: white;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .modal-header .close-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            color: white;
-            font-size: 24px;
+        /* Стили для модалки жалоб с причинами */
+        .report-reason-item {
+            background: var(--tg-input-bg);
+            border: 1px solid var(--tg-border-color);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             transition: all 0.2s;
-        }
-        
-        .modal-header .close-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: rotate(90deg);
-        }
-        
-        .question-preview {
-            background: rgba(46, 141, 230, 0.1);
-            border: 1px solid rgba(46, 141, 230, 0.3);
-            border-radius: 15px;
-            padding: 20px;
-            margin: 25px;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .question-preview::before {
-            content: '❓';
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            font-size: 40px;
-            opacity: 0.2;
-        }
-        
-        .question-label {
-            color: #93c5fd;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 8px;
-        }
-        
-        .question-text-preview {
-            color: #e2e8f0;
-            font-size: 16px;
-            line-height: 1.5;
-            font-style: italic;
-        }
-        
-        .answer-form {
-            padding: 0 25px 25px;
-        }
-        
-        .form-group {
-            margin-bottom: 25px;
-        }
-        
-        .form-label {
-            display: block;
-            color: #e2e8f0;
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .form-label::before {
-            content: '✍️';
-            font-size: 20px;
-        }
-        
-        .answer-textarea {
-            width: 100%;
-            min-height: 150px;
-            padding: 18px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid #3d3d3d;
-            border-radius: 12px;
-            color: #e2e8f0;
-            font-size: 16px;
-            font-family: inherit;
-            resize: vertical;
-            line-height: 1.5;
-            transition: all 0.3s;
-        }
-        
-        .answer-textarea:focus {
-            outline: none;
-            border-color: #2e8de6;
-            background: rgba(46, 141, 230, 0.05);
-            box-shadow: 0 0 0 3px rgba(46, 141, 230, 0.1);
-        }
-        
-        .char-counter {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 12px;
-            font-size: 13px;
-            color: #94a3b8;
-        }
-        
-        .progress-bar {
-            height: 4px;
-            background: #3d3d3d;
-            border-radius: 2px;
-            margin-top: 6px;
-            overflow: hidden;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
-            transition: width 0.3s, background 0.3s;
-        }
-        
-        .modal-footer {
-            padding: 20px 25px;
-            border-top: 1px solid #3d3d3d;
-            display: flex;
             gap: 12px;
-            background: rgba(0, 0, 0, 0.2);
         }
         
-        .btn-secondary {
+        .report-reason-item:hover {
+            background: rgba(46, 141, 230, 0.1);
+            border-color: var(--tg-accent-color);
+        }
+        
+        .report-reason-item.selected {
+            background: rgba(46, 141, 230, 0.15);
+            border-color: var(--tg-accent-color);
+            border-left: 4px solid var(--tg-accent-color);
+        }
+        
+        .report-reason-item input[type="radio"] {
+            flex-shrink: 0;
+        }
+        
+        .report-reason-item label {
             flex: 1;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid #3d3d3d;
-            color: #e2e8f0;
+            cursor: pointer;
+            margin: 0;
         }
         
-        .btn-primary {
-            flex: 1;
-            background: linear-gradient(135deg, #2e8de6 0%, #1a7cd6 100%);
-            border: none;
-            color: white;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+        /* Улучшенные кнопки для мобильных */
+        .btn-action {
+            padding: 8px 12px !important;
+            font-size: 13px !important;
+            border-radius: 8px !important;
+            min-height: 36px !important;
         }
         
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        /* Улучшенный скролл на мобильных */
+        .tab-content {
+            -webkit-overflow-scrolling: touch !important;
+            scroll-behavior: smooth !important;
         }
         
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        /* Улучшенные поля ввода на мобильных */
+        input, textarea, select {
+            font-size: 16px !important; /* Предотвращает зумирование на iOS */
+        }
+        
+        /* Улучшенные таблицы на мобильных */
+        .users-table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Улучшенные модальные окна на мобильных */
+        .modal-overlay {
+            padding: 10px !important;
+            align-items: flex-start !important;
+            padding-top: 60px !important;
+        }
+        
+        .modal-content {
+            max-height: 80vh !important;
+            overflow-y: auto !important;
         }
     </style>
 </head>
@@ -333,7 +275,7 @@
         </div>
     </div>
     
-    <!-- КРАСИВАЯ МОДАЛКА ОТВЕТА -->
+    <!-- МОДАЛКА ОТВЕТА -->
     <div id="answerModal" class="modal-overlay">
         <div class="answer-modal">
             <div class="modal-header">
@@ -417,340 +359,134 @@
         </div>
     </div>
 
-    <!-- Добавить в конец body в index.html -->
-<!-- Модалка ответа на вопрос -->
-<div id="answerModal" class="modal-overlay">
-    <div class="answer-modal">
-        <div class="modal-header">
-            <h3>
-                <span>💬</span>
-                Ответить на вопрос
-            </h3>
-            <button class="close-btn" onclick="closeAnswerModal()">×</button>
-        </div>
-        
-        <div class="question-preview">
-            <div class="question-label">
-                <span>❓</span>
-                Вопрос от анонима:
-            </div>
-            <div class="question-text-preview" id="previewQuestionText">
-                Загрузка вопроса...
-            </div>
-        </div>
-        
-        <div class="answer-form">
-            <div class="form-group">
-                <label class="form-label">Ваш ответ:</label>
-                <textarea 
-                    id="answerText" 
-                    class="answer-textarea"
-                    placeholder="Напишите ваш ответ здесь... Будьте вежливы и конструктивны!"
-                    maxlength="1000"
-                    rows="5"
-                ></textarea>
-                
-                <div class="char-counter">
-                    <span id="answerCharCount">0</span> / 1000 символов
-                    <span id="charLimitWarning" style="color: #ff9800; display: none;">
-                        ⚠️ Осталось мало символов
-                    </span>
-                </div>
-                
-                <div class="progress-bar">
-                    <div class="progress-fill" id="charProgressBar"></div>
-                </div>
+    <!-- МОДАЛКА ДЛЯ ЖАЛОБ -->
+    <div id="reportModal" class="modal-overlay" style="display: none;">
+        <div class="answer-modal">
+            <div class="modal-header">
+                <h3>
+                    <span>⚠️</span>
+                    Отправка жалобы
+                </h3>
+                <button class="close-btn" id="closeReportModal">×</button>
             </div>
             
-            <div style="
-                background: rgba(46, 141, 230, 0.1);
-                border-radius: 10px;
-                padding: 15px;
-                margin-bottom: 20px;
-                border-left: 3px solid #2e8de6;
-            ">
-                <div style="display: flex; align-items: flex-start; gap: 10px;">
-                    <div style="
-                        width: 28px;
-                        height: 28px;
-                        background: #2e8de6;
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: white;
-                        font-size: 14px;
-                        flex-shrink: 0;
-                    ">💡</div>
-                    <div style="font-size: 13px; color: #93c5fd;">
-                        <strong>Совет:</strong> После ответа вы сможете поделиться им в чате с ботом. 
-                        Ответ будет отправлен анонимно, но вы получите уведомление.
+            <div class="answer-form">
+                <div class="form-group">
+                    <label class="form-label">Выберите причину:</label>
+                    <div id="reportReasonsList" style="margin-bottom: 20px;">
+                        <!-- Причины будут загружены динамически -->
+                    </div>
+                    <input type="hidden" id="reportReason">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Дополнительные детали (необязательно):</label>
+                    <textarea 
+                        id="reportDetails" 
+                        class="answer-textarea"
+                        placeholder="Опишите подробнее, если это необходимо..."
+                        maxlength="500"
+                        rows="3"
+                    ></textarea>
+                    <div class="char-counter">
+                        <span id="reportDetailsCharCount">0</span> / 500 символов
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">ID вопроса (если есть):</label>
+                    <input 
+                        type="number" 
+                        id="reportQuestionId" 
+                        class="answer-textarea"
+                        placeholder="789"
+                        style="height: auto; min-height: 44px;"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">ID пользователя (если знаете):</label>
+                    <input 
+                        type="number" 
+                        id="reportUserId" 
+                        class="answer-textarea"
+                        placeholder="123456789"
+                        style="height: auto; min-height: 44px;"
+                    >
+                </div>
+                
+                <div style="
+                    background: rgba(255, 152, 0, 0.1);
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin-bottom: 20px;
+                    border-left: 3px solid #ff9800;
+                ">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <div style="
+                            width: 28px;
+                            height: 28px;
+                            background: #ff9800;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 14px;
+                            flex-shrink: 0;
+                        ">ℹ️</div>
+                        <div style="font-size: 13px; color: #ffb74d;">
+                            <strong>Важно:</strong> Ложные жалобы могут привести к ограничению доступа к сервису. 
+                            Пожалуйста, выбирайте причину внимательно.
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeAnswerModal()">
-                Отмена
-            </button>
-            <button class="btn btn-primary" onclick="submitAnswer()">
-                <span>📤</span>
-                Отправить ответ
-            </button>
+            
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeReportModal()">
+                    Отмена
+                </button>
+                <button class="btn btn-primary" id="submitReportBtn">
+                    <span>📤</span>
+                    Отправить жалобу
+                </button>
+            </div>
         </div>
     </div>
-</div>
-
-<!-- Модалка для жалоб -->
-<div id="reportModal" class="modal-overlay" style="display: none;">
-    <div class="answer-modal">
-        <div class="modal-header">
-            <h3>
-                <span>⚠️</span>
-                Отправка жалобы
-            </h3>
-            <button class="close-btn" id="closeReportModal">×</button>
-        </div>
-        
-        <div class="answer-form">
-            <div class="form-group">
-                <label class="form-label">Причина жалобы:</label>
-                <textarea 
-                    id="reportReason" 
-                    class="answer-textarea"
-                    placeholder="Опишите подробно причину жалобы..."
-                    maxlength="1000"
-                    rows="6"
-                ></textarea>
-                
-                <div class="char-counter">
-                    <span id="reportCharCount">0</span> / 1000 символов
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">ID пользователя (если знаете):</label>
-                <input 
-                    type="number" 
-                    id="reportUserId" 
-                    class="answer-textarea"
-                    placeholder="123456789"
-                    style="height: auto; min-height: 44px;"
-                >
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">ID вопроса (если есть):</label>
-                <input 
-                    type="number" 
-                    id="reportQuestionId" 
-                    class="answer-textarea"
-                    placeholder="789"
-                    style="height: auto; min-height: 44px;"
-                >
-            </div>
-            
-            <div style="
-                background: rgba(255, 152, 0, 0.1);
-                border-radius: 10px;
-                padding: 15px;
-                margin-bottom: 20px;
-                border-left: 3px solid #ff9800;
-            ">
-                <div style="display: flex; align-items: flex-start; gap: 10px;">
-                    <div style="
-                        width: 28px;
-                        height: 28px;
-                        background: #ff9800;
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: white;
-                        font-size: 14px;
-                        flex-shrink: 0;
-                    ">ℹ️</div>
-                    <div style="font-size: 13px; color: #ffb74d;">
-                        <strong>Важно:</strong> Ложные жалобы могут привести к ограничению доступа к сервису. 
-                        Пожалуйста, описывайте нарушения максимально подробно.
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeReportModal()">
-                Отмена
-            </button>
-            <button class="btn btn-primary" id="submitReportBtn">
-                <span>📤</span>
-                Отправить жалобу
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Стили для страницы ограничения доступа -->
-<style>
-.access-restricted {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--tg-bg-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 10000;
-}
-
-.restricted-content {
-    background: var(--tg-secondary-bg);
-    border-radius: 20px;
-    padding: 40px 30px;
-    max-width: 500px;
-    width: 100%;
-    text-align: center;
-    border: 1px solid var(--tg-border-color);
-    box-shadow: var(--tg-shadow);
-}
-
-.restricted-icon {
-    font-size: 80px;
-    margin-bottom: 20px;
-    opacity: 0.8;
-}
-
-.restricted-content h2 {
-    color: var(--tg-text-color);
-    margin-bottom: 15px;
-    font-size: 24px;
-}
-
-.restricted-content p {
-    color: var(--tg-secondary-text);
-    margin-bottom: 20px;
-    line-height: 1.5;
-}
-
-.channel-info {
-    background: rgba(46, 141, 230, 0.1);
-    border: 1px solid rgba(46, 141, 230, 0.3);
-    border-radius: 10px;
-    padding: 15px;
-    margin: 20px 0;
-    font-size: 18px;
-}
-
-.tos-preview {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    padding: 20px;
-    margin: 20px 0;
-    text-align: left;
-}
-
-.tos-preview h3 {
-    color: var(--tg-text-color);
-    margin-bottom: 10px;
-    font-size: 16px;
-}
-
-.tos-preview ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.tos-preview li {
-    color: var(--tg-secondary-text);
-    margin-bottom: 8px;
-    padding-left: 20px;
-    position: relative;
-}
-
-.tos-preview li::before {
-    content: "•";
-    color: var(--tg-accent-color);
-    position: absolute;
-    left: 0;
-}
-
-.actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 30px;
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-.actions .btn {
-    min-width: 180px;
-}
-
-.report-btn-small {
-    background: none;
-    border: none;
-    color: var(--tg-warning);
-    cursor: pointer;
-    font-size: 14px;
-    margin-left: 8px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.report-btn-small:hover {
-    background: rgba(255, 152, 0, 0.1);
-}
-
-.reports-stats {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 15px;
-}
-
-.report-stat {
-    background: var(--tg-input-bg);
-    border: 1px solid var(--tg-border-color);
-    border-radius: 8px;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 80px;
-}
-
-.report-status {
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-}
-
-.report-status.pending {
-    color: var(--tg-warning);
-}
-
-.report-status.approved {
-    color: var(--tg-success);
-}
-
-.report-status.rejected {
-    color: var(--tg-danger);
-}
-
-.report-count {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--tg-accent-color);
-}
-</style>
     
     <script src="app.js"></script>
+    <script>
+        // Инициализация счетчика символов для деталей жалобы
+        document.addEventListener('DOMContentLoaded', function() {
+            const detailsInput = document.getElementById('reportDetails');
+            const charCount = document.getElementById('reportDetailsCharCount');
+            
+            if (detailsInput && charCount) {
+                detailsInput.addEventListener('input', function() {
+                    charCount.textContent = this.value.length;
+                });
+            }
+            
+            // Добавляем обработчик для проверки типа блокировки
+            const blockPermanent = document.getElementById('blockPermanent');
+            const blockDuration = document.getElementById('blockDuration');
+            
+            if (blockPermanent && blockDuration) {
+                blockPermanent.addEventListener('change', function() {
+                    blockDuration.disabled = this.checked;
+                });
+            }
+            
+            const blockFromReportPermanent = document.getElementById('blockFromReportPermanent');
+            const blockFromReportDuration = document.getElementById('blockFromReportDuration');
+            
+            if (blockFromReportPermanent && blockFromReportDuration) {
+                blockFromReportPermanent.addEventListener('change', function() {
+                    blockFromReportDuration.disabled = this.checked;
+                });
+            }
+        });
+    </script>
 </body>
 </html>
