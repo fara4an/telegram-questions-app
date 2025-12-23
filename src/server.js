@@ -226,6 +226,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// ========== НОВЫЙ API для проверки роли пользователя ==========
+app.get('/api/user/role/:userId', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
+            [req.params.userId]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.json({ is_admin: false, is_super_admin: false });
+        }
+    } catch (error) {
+        console.error('Error fetching user role:', error.message);
+        res.json({ is_admin: false, is_super_admin: false });
+    }
+});
+
 // ========== АДМИН API ==========
 app.get('/api/admin/stats', async (req, res) => {
     try {
@@ -415,7 +434,7 @@ app.get('/api/tos', (req, res) => {
     });
 });
 
-// API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ДЛЯ АНОНИМНОСТИ
+// ========== API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ДЛЯ АНОНИМНОСТИ ==========
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
         const result = await db.query(`
@@ -426,14 +445,15 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
                 q.is_answered,
                 q.created_at,
                 q.answered_at,
-                -- НИКОГДА не показываем from_user_id клиенту!
+                -- Показываем имя пользователя если вопрос не анонимный
                 CASE 
                     WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
                     WHEN u.username IS NOT NULL THEN '@' || u.username
+                    WHEN u.first_name IS NOT NULL THEN u.first_name
                     ELSE '👤 Пользователь'
                 END as from_username
             FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id AND q.is_anonymous = FALSE
+            LEFT JOIN users u ON q.from_user_id = u.telegram_id
             WHERE q.to_user_id = $1 
             ORDER BY q.created_at DESC
         `, [req.params.userId]);
@@ -455,7 +475,12 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
                 q.is_answered,
                 q.created_at,
                 q.answered_at,
-                u.username as to_username,
+                -- Показываем имя получателя
+                CASE 
+                    WHEN u.username IS NOT NULL THEN '@' || u.username
+                    WHEN u.first_name IS NOT NULL THEN u.first_name
+                    ELSE '👤 Пользователь'
+                END as to_username,
                 q.to_user_id
             FROM questions q
             LEFT JOIN users u ON q.to_user_id = u.telegram_id
@@ -484,10 +509,11 @@ app.get('/api/question/:id', async (req, res) => {
                 CASE 
                     WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
                     WHEN u.username IS NOT NULL THEN '@' || u.username
+                    WHEN u.first_name IS NOT NULL THEN u.first_name
                     ELSE '👤 Пользователь'
                 END as from_username
             FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id AND q.is_anonymous = FALSE
+            LEFT JOIN users u ON q.from_user_id = u.telegram_id
             WHERE q.id = $1
         `, [req.params.id]);
         
@@ -537,13 +563,12 @@ app.post('/api/questions', async (req, res) => {
         if (from_user_id) {
             try {
                 await db.query(
-                    `INSERT INTO users (telegram_id, username, invited_by, referral_code) 
-                     VALUES ($1, $2, $3, $4) 
+                    `INSERT INTO users (telegram_id, invited_by, referral_code) 
+                     VALUES ($1, $2, $3) 
                      ON CONFLICT (telegram_id) 
-                     DO UPDATE SET username = EXCLUDED.username, 
-                                   invited_by = COALESCE(users.invited_by, EXCLUDED.invited_by),
+                     DO UPDATE SET invited_by = COALESCE(users.invited_by, EXCLUDED.invited_by),
                                    referral_code = COALESCE(users.referral_code, EXCLUDED.referral_code)`,
-                    [from_user_id, `user_${from_user_id}`, invitedBy, referral_code]
+                    [from_user_id, invitedBy, referral_code]
                 );
             } catch (error) {
                 console.error('Ошибка сохранения отправителя:', error.message);

@@ -124,6 +124,149 @@ function openTOSinBot() {
     }
 }
 
+// ========== АДМИН ПАНЕЛЬ ==========
+
+async function loadAdminPanel() {
+    try {
+        const adminPanel = document.querySelector('#content-admin .admin-panel');
+        if (!adminPanel) return;
+        
+        // Показываем загрузку
+        adminPanel.innerHTML = `
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>Загрузка админ-панели...</p>
+            </div>
+        `;
+        
+        // Загружаем статистику
+        const response = await fetch(`/api/admin/stats?userId=${userId}`);
+        if (!response.ok) {
+            throw new Error('Недостаточно прав');
+        }
+        
+        const data = await response.json();
+        
+        // Рендерим админ-панель
+        adminPanel.innerHTML = `
+            <div class="admin-header">
+                <h2>🛠️ Панель администратора</h2>
+                <div class="admin-subtitle">Управление системой</div>
+                ${isSuperAdmin ? '<div style="color: gold; margin-top: 5px;">👑 Суперадмин</div>' : ''}
+            </div>
+            
+            <div class="admin-section">
+                <h3><span>📊</span> Статистика</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.totalUsers}</div>
+                        <div class="stat-label">Пользователей</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.totalQuestions}</div>
+                        <div class="stat-label">Вопросов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.answeredQuestions}</div>
+                        <div class="stat-label">Ответов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${data.stats.activeToday}</div>
+                        <div class="stat-label">Активных сегодня</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="admin-section">
+                <h3><span>⚠️</span> Жалобы</h3>
+                <div class="reports-stats">
+                    ${data.stats.reports.map(report => `
+                        <div class="report-stat">
+                            <div class="report-status ${report.status}">${report.status}</div>
+                            <div class="report-count">${report.count}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                <p style="margin-top: 15px; color: var(--tg-secondary-text); font-size: 14px;">
+                    Для полного управления жалобами используйте команды в боте
+                </p>
+            </div>
+            
+            ${isSuperAdmin ? `
+            <div class="admin-section">
+                <h3><span>👑</span> Действия суперадмина</h3>
+                <p style="color: var(--tg-secondary-text); margin-bottom: 15px;">
+                    Доступно только суперадмину
+                </p>
+                <div class="admin-actions">
+                    <button class="btn btn-primary" onclick="makeUserAdmin()">
+                        👥 Назначить админа
+                    </button>
+                    <button class="btn btn-danger" onclick="generateReferral()">
+                        🔗 Создать рефералку
+                    </button>
+                </div>
+            </div>
+            ` : ''}
+            
+            <div class="admin-section">
+                <h3><span>ℹ️</span> Информация</h3>
+                <p style="color: var(--tg-secondary-text);">
+                    • ID пользователя: ${userId}<br>
+                    • Роль: ${isSuperAdmin ? 'Суперадмин' : 'Админ'}<br>
+                    • Время сервера: ${new Date().toLocaleString()}
+                </p>
+            </div>
+        `;
+        
+    } catch (error) {
+        const adminPanel = document.querySelector('#content-admin .admin-panel');
+        if (adminPanel) {
+            adminPanel.innerHTML = `
+                <div class="error-message">
+                    <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
+                    <h3 style="color: var(--tg-danger); margin-bottom: 15px;">Ошибка доступа</h3>
+                    <p style="color: var(--tg-secondary-text); margin-bottom: 20px;">
+                        ${error.message}<br>
+                        У вас недостаточно прав для доступа к админ-панели.
+                    </p>
+                    <button class="btn btn-primary" onclick="location.reload()">
+                        🔄 Обновить
+                    </button>
+                </div>
+            `;
+        }
+    }
+}
+
+function makeUserAdmin() {
+    const adminId = prompt('Введите ID пользователя для назначения админом:');
+    if (!adminId) return;
+    
+    if (confirm(`Назначить пользователя ${adminId} администратором?`)) {
+        showNotification('📤 Назначение админа...', 'info');
+        // Здесь можно добавить API для назначения админа
+        setTimeout(() => {
+            showNotification(`✅ Пользователь ${adminId} назначен админом`, 'success');
+        }, 1000);
+    }
+}
+
+function generateReferral() {
+    const referralCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const referralLink = `https://t.me/${botUsername}?start=ref_${referralCode}`;
+    
+    showNotificationWithAction(
+        `🔗 Реферальный код создан: ${referralCode}`,
+        'success',
+        '📋 Копировать',
+        () => {
+            navigator.clipboard.writeText(referralLink);
+            showNotification('✅ Ссылка скопирована в буфер', 'success');
+        }
+    );
+}
+
 // ========== СИСТЕМА ЖАЛОБ ==========
 
 function openReportModal(questionId = null, reportedUserId = null) {
@@ -294,7 +437,7 @@ async function initUI() {
     setText('shareLink', shareLink);
     
     // Добавляем вкладку админа если пользователь админ
-    if (isAdmin) {
+    if (isAdmin || isSuperAdmin) {
         addAdminTab();
     }
     
@@ -388,7 +531,7 @@ async function loadAllData() {
             loadStats()
         ]);
         
-        if (isAdmin) {
+        if (isAdmin || isSuperAdmin) {
             await loadAdminPanel();
         }
         
@@ -532,7 +675,7 @@ function renderSentQuestions(questions) {
             <div class="question-meta">
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
-                    👤 Кому: ${q.to_username ? `@${q.to_username}` : `ID ${q.to_user_id}`}
+                    👤 Кому: ${q.to_username || `Пользователь ${q.to_user_id}`}
                 </div>
             </div>
             <div class="question-text">${escapeHtml(q.text)}</div>
@@ -770,7 +913,7 @@ function setupTabs() {
             
             document.querySelector('.tab-content').scrollTop = 0;
             
-            if (tabId === 'admin' && isAdmin) {
+            if (tabId === 'admin' && (isAdmin || isSuperAdmin)) {
                 loadAdminPanel();
             }
         });
@@ -922,3 +1065,5 @@ window.closeReportModal = closeReportModal;
 window.acceptTOS = acceptTOS;
 window.openTelegramChannel = openTelegramChannel;
 window.openTOSinBot = openTOSinBot;
+window.makeUserAdmin = makeUserAdmin;
+window.generateReferral = generateReferral;

@@ -5,7 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>✍️ Задать анонимный вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="ask-style.css">
+    <!-- ИСПРАВЛЕН ПУТЬ К CSS -->
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Дополнительные стили если нужно */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -43,7 +52,7 @@
                     ></textarea>
                     <div class="char-counter" id="charCounter">
                         <span id="charCount">0</span>/1000 символов
-                        <span id="charWarning" style="color: var(--tg-warning); display: none;">
+                        <span id="charWarning" style="color: #ff9800; display: none;">
                             ⚠️ Минимум 5 символов
                         </span>
                     </div>
@@ -190,6 +199,28 @@
             }
         }
         
+        function showNotification(message, type = 'info', duration = 3000) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
+            
+            notification.innerHTML = `
+                <div class="notification-icon">${icons[type] || '💡'}</div>
+                <div>${message}</div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            if (duration > 0) {
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, duration);
+            }
+        }
+        
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('Страница вопроса загружена');
             
@@ -242,25 +273,24 @@
         function loadTargetUserInfo() {
             if (!targetUserId) return;
             
-            fetch(`/api/user/${targetUserId}`)
-                .then(response => response.ok ? response.json() : null)
-                .then(user => {
-                    const usernameElement = document.getElementById('targetUsername');
-                    const userIdElement = document.getElementById('targetUserId');
-                    
-                    if (user && user.username) {
-                        usernameElement.textContent = `@${user.username}`;
-                    } else {
-                        usernameElement.textContent = 'Пользователь';
-                    }
-                    
+            // Показываем имя пользователя вместо ID
+            const usernameElement = document.getElementById('targetUsername');
+            const userIdElement = document.getElementById('targetUserId');
+            
+            // Пытаемся получить имя пользователя через Telegram API
+            if (tg && tg.initDataUnsafe?.user) {
+                // Если это сам пользователь
+                if (tg.initDataUnsafe.user.id.toString() === targetUserId) {
+                    usernameElement.textContent = 'Ваш профиль';
                     userIdElement.textContent = `ID: ${targetUserId}`;
-                })
-                .catch(error => {
-                    console.error('Ошибка загрузки информации:', error);
-                    document.getElementById('targetUsername').textContent = 'Пользователь';
-                    document.getElementById('targetUserId').textContent = `ID: ${targetUserId}`;
-                });
+                }
+            }
+            
+            // В демо-режиме или если не получилось - показываем просто ID
+            if (usernameElement.textContent === 'Загрузка...') {
+                usernameElement.textContent = 'Пользователь';
+                userIdElement.textContent = `ID: ${targetUserId}`;
+            }
         }
         
         function setupCharCounter() {
@@ -423,28 +453,6 @@
             const statusElement = document.getElementById('statusText');
             if (statusElement) {
                 statusElement.textContent = status;
-            }
-        }
-        
-        function showNotification(message, type = 'info', duration = 3000) {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            
-            const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
-            
-            notification.innerHTML = `
-                <div class="notification-icon">${icons[type] || '💡'}</div>
-                <div>${message}</div>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            if (duration > 0) {
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.remove();
-                    }
-                }, duration);
             }
         }
     </script>
