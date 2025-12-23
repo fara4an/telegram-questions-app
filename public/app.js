@@ -37,7 +37,7 @@ async function showAccessRestrictions() {
                     <div class="channel-info">
                         <strong>Канал:</strong> ${TELEGRAM_CHANNEL}
                     </div>
-                    <p>После подписки обновите страницу</p>
+                    <p>После подписки нажмите кнопку "Я подписался"</p>
                     <div class="actions">
                         <button class="btn btn-primary" onclick="openTelegramChannel()">
                             📢 Перейти в канал
@@ -126,18 +126,18 @@ function openTOSinBot() {
 
 // ========== СИСТЕМА ЖАЛОБ ==========
 
-async function openReportModal(questionId = null, reportedUserId = null) {
-    const modal = getElement('reportModal');
+function openReportModal(questionId = null, reportedUserId = null) {
+    const modal = document.getElementById('reportModal');
     if (!modal) {
         console.error('Модалка reportModal не найдена');
         return;
     }
     
     // Сбрасываем форму
-    const questionIdInput = getElement('reportQuestionId');
-    const userIdInput = getElement('reportUserId');
-    const reasonInput = getElement('reportReason');
-    const charCount = getElement('reportCharCount');
+    const questionIdInput = document.getElementById('reportQuestionId');
+    const userIdInput = document.getElementById('reportUserId');
+    const reasonInput = document.getElementById('reportReason');
+    const charCount = document.getElementById('reportCharCount');
     
     if (questionIdInput) questionIdInput.value = questionId || '';
     if (userIdInput) userIdInput.value = reportedUserId || '';
@@ -146,16 +146,22 @@ async function openReportModal(questionId = null, reportedUserId = null) {
         charCount.textContent = '0';
     }
     
-    modal.classList.add('active');
+    modal.style.display = 'flex';
+    setTimeout(() => modal.classList.add('active'), 10);
 }
 
 async function submitReport() {
-    const questionId = getElement('reportQuestionId')?.value;
-    const reportedUserId = getElement('reportUserId')?.value;
-    const reason = getElement('reportReason')?.value;
+    const questionId = document.getElementById('reportQuestionId')?.value;
+    const reportedUserId = document.getElementById('reportUserId')?.value;
+    const reason = document.getElementById('reportReason')?.value;
     
     if (!reason || reason.length < 10) {
         showNotification('Опишите причину жалобы (минимум 10 символов)', 'warning');
+        return;
+    }
+    
+    if (!reason || reason.trim() === '') {
+        showNotification('Введите причину жалобы', 'warning');
         return;
     }
     
@@ -188,18 +194,17 @@ async function submitReport() {
 }
 
 function closeReportModal() {
-    const modal = getElement('reportModal');
-    if (modal) modal.classList.remove('active');
+    const modal = document.getElementById('reportModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
 }
 
 // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
 function getElement(id) {
-    const element = document.getElementById(id);
-    if (!element) {
-        console.warn(`⚠️ Элемент ${id} не найден`);
-    }
-    return element;
+    return document.getElementById(id);
 }
 
 function setText(id, text) {
@@ -221,7 +226,12 @@ async function initApp() {
         
         await initUI();
         await loadAllData();
-        setInterval(loadAllData, 30000);
+        // Обновляем данные каждые 30 секунд
+        setInterval(async () => {
+            await loadAllData();
+            // Периодически проверяем подписку
+            await checkUserAccess();
+        }, 30000);
         
         console.log('✅ Приложение инициализировано');
     } catch (error) {
@@ -325,27 +335,34 @@ function addAdminTab() {
 }
 
 function setupReportHandlers() {
-    // Обработчик для кнопок репорта
+    // Назначаем обработчики для кнопок
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('report-btn') || e.target.closest('.report-btn')) {
-            const btn = e.target.classList.contains('report-btn') ? e.target : e.target.closest('.report-btn');
-            const questionId = btn.getAttribute('data-question-id');
-            const reportedUserId = btn.getAttribute('data-user-id');
-            openReportModal(questionId, reportedUserId);
-        }
-        
+        // Обработка маленьких кнопок репорта
         if (e.target.classList.contains('report-btn-small')) {
             const questionId = e.target.getAttribute('data-question-id');
             const reportedUserId = e.target.getAttribute('data-user-id');
             openReportModal(questionId, reportedUserId);
+            return;
         }
         
+        // Обработка больших кнопок репорта
+        if (e.target.classList.contains('report-btn')) {
+            const questionId = e.target.getAttribute('data-question-id');
+            const reportedUserId = e.target.getAttribute('data-user-id');
+            openReportModal(questionId, reportedUserId);
+            return;
+        }
+        
+        // Кнопка отправки жалобы
         if (e.target.id === 'submitReportBtn' || e.target.closest('#submitReportBtn')) {
             submitReport();
+            return;
         }
         
+        // Закрытие модалки
         if (e.target.id === 'closeReportModal' || e.target.closest('#closeReportModal')) {
             closeReportModal();
+            return;
         }
     });
     
@@ -383,91 +400,6 @@ async function loadAllData() {
         await showTestData();
         showNotification('Используем тестовые данные', 'warning');
     }
-}
-
-// ========== АДМИН-ПАНЕЛЬ ==========
-
-async function loadAdminPanel() {
-    try {
-        const response = await fetch(`/api/admin/stats?userId=${userId}`);
-        
-        if (!response.ok) {
-            if (response.status === 403) {
-                console.log('Доступ к админ-панели запрещен');
-                return;
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        renderAdminPanel(data);
-        
-    } catch (error) {
-        console.error('Ошибка загрузки админ-панели:', error);
-        showNotification('Ошибка загрузки админ-панели', 'error');
-    }
-}
-
-function renderAdminPanel(data) {
-    const adminPanel = document.querySelector('.admin-panel');
-    if (!adminPanel) return;
-    
-    const { stats } = data;
-    
-    adminPanel.innerHTML = `
-        <div class="admin-header">
-            <h2>🛠️ Админ-панель ${stats.isSuperAdmin ? '👑' : ''}</h2>
-            <p class="admin-subtitle">${stats.isSuperAdmin ? 'Главный администратор' : 'Администратор'}</p>
-        </div>
-        
-        <div class="stats-grid admin-stats">
-            <div class="stat-card">
-                <div class="stat-number">${stats.totalUsers}</div>
-                <div class="stat-label">Всего пользователей</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${stats.totalQuestions}</div>
-                <div class="stat-label">Всего вопросов</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${stats.answeredQuestions}</div>
-                <div class="stat-label">Отвечено</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${stats.activeToday}</div>
-                <div class="stat-label">Активных сегодня</div>
-            </div>
-        </div>
-        
-        <div class="admin-section">
-            <h3>📊 Статистика жалоб</h3>
-            <div class="reports-stats">
-                ${stats.reports.map(report => `
-                    <div class="report-stat">
-                        <span class="report-status ${report.status}">${report.status}</span>
-                        <span class="report-count">${report.count}</span>
-                    </div>
-                `).join('')}
-            </div>
-            <button onclick="viewReports()" class="btn btn-primary" style="margin-top: 15px;">
-                👁️ Просмотреть жалобы
-            </button>
-        </div>
-        
-        <div class="admin-actions">
-            <button onclick="refreshAdminPanel()" class="btn btn-secondary">
-                🔄 Обновить
-            </button>
-        </div>
-    `;
-}
-
-function viewReports() {
-    showNotification('Просмотр жалоб в разработке', 'info');
-}
-
-async function refreshAdminPanel() {
-    await loadAdminPanel();
 }
 
 // ========== ВОПРОСЫ И ОТВЕТЫ ==========
@@ -533,9 +465,9 @@ function renderIncomingQuestions(questions) {
             <div class="question-meta">
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
-                    ${q.from_username ? `@${q.from_username}` : '👤 Аноним'}
-                    <button class="report-btn-small" data-question-id="${q.id}" data-user-id="${q.from_user_id}" 
-                            title="Пожаловаться">
+                    ${q.from_username}
+                    <button class="report-btn-small" data-question-id="${q.id}" data-user-id="" 
+                            title="Пожаловаться на вопрос">
                         ⚠️
                     </button>
                 </div>
@@ -552,7 +484,7 @@ function renderIncomingQuestions(questions) {
                     </button>
                     <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
-                            data-user-id="${q.from_user_id}">
+                            data-user-id="">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
@@ -566,7 +498,7 @@ function renderIncomingQuestions(questions) {
                     </button>
                     <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
-                            data-user-id="${q.from_user_id}">
+                            data-user-id="">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
@@ -645,42 +577,6 @@ async function loadStats() {
         setText('statSent', '0');
         setText('statAnswered', '0');
     }
-}
-
-async function showTestData() {
-    const testIncoming = [
-        {
-            id: 1,
-            text: "Тестовый вопрос 1?",
-            answer: null,
-            is_answered: false,
-            created_at: new Date().toISOString(),
-            from_username: 'Аноним',
-            from_user_id: 123456
-        }
-    ];
-    
-    const testSent = [
-        {
-            id: 2,
-            text: "Тестовый отправленный вопрос?",
-            answer: "Тестовый ответ",
-            is_answered: true,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            to_user_id: 123456,
-            to_username: 'test_user'
-        }
-    ];
-    
-    renderIncomingQuestions(testIncoming);
-    renderSentQuestions(testSent);
-    updateBadge('incoming', testIncoming.length);
-    updateBadge('sent', testSent.length);
-    
-    setText('statTotal', '2');
-    setText('statReceived', '1');
-    setText('statSent', '1');
-    setText('statAnswered', '1');
 }
 
 // ========== ОБРАБОТКА ОТВЕТОВ ==========
@@ -1020,10 +916,6 @@ window.closeAnswerModal = closeAnswerModal;
 window.submitAnswer = submitAnswer;
 window.shareAnswer = shareAnswer;
 window.deleteQuestion = deleteQuestion;
-window.makeAdmin = makeAdmin;
-window.createReferralLink = createReferralLink;
-window.refreshAdminPanel = refreshAdminPanel;
-window.showNotificationWithAction = showNotificationWithAction;
 window.openReportModal = openReportModal;
 window.submitReport = submitReport;
 window.closeReportModal = closeReportModal;

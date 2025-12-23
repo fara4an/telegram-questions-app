@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>✍️ Задать вопрос</title>
+    <title>✍️ Задать анонимный вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="ask-style.css">
 </head>
@@ -88,61 +88,77 @@
         // Проверка доступа пользователя
         async function checkAskerAccess() {
             try {
-                if (!currentUserId) return true; // Для анонимов
+                // Если пользователь аноним - пропускаем проверку
+                if (!currentUserId) return true;
                 
                 const response = await fetch(`/api/user/access/${currentUserId}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    if (!data.isSubscribed) {
-                        document.body.innerHTML = `
-                            <div class="access-restricted">
-                                <div class="restricted-content">
-                                    <div class="restricted-icon">📢</div>
-                                    <h2>Требуется подписка</h2>
-                                    <p>Для отправки вопросов необходимо подписаться на наш Telegram-канал</p>
-                                    <div class="channel-info">
-                                        <strong>Канал:</strong> @questionstg
-                                    </div>
-                                    <div class="actions">
-                                        <button class="btn btn-primary" onclick="openChannel()">
-                                            📢 Перейти в канал
-                                        </button>
-                                        <button class="btn btn-secondary" onclick="location.reload()">
-                                            🔄 Я подписался
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                        return false;
-                    }
-                    
-                    if (!data.agreedTOS) {
-                        document.body.innerHTML = `
-                            <div class="access-restricted">
-                                <div class="restricted-content">
-                                    <div class="restricted-icon">📝</div>
-                                    <h2>Требуется подтверждение</h2>
-                                    <p>Для отправки вопросов необходимо принять Пользовательское соглашение</p>
-                                    <div class="actions">
-                                        <button class="btn btn-primary" onclick="openTOS()">
-                                            📄 Принять соглашение
-                                        </button>
-                                        <button class="btn btn-secondary" onclick="location.reload()">
-                                            🔄 Вернуться назад
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                        return false;
-                    }
+                if (!response.ok) return false;
+                
+                const data = await response.json();
+                
+                // Если не подписан на канал
+                if (!data.isSubscribed) {
+                    showRestrictedView('subscription');
+                    return false;
                 }
+                
+                // Если не принял TOS
+                if (!data.agreedTOS) {
+                    showRestrictedView('tos');
+                    return false;
+                }
+                
                 return true;
             } catch (error) {
                 console.error('Ошибка проверки доступа:', error);
-                return true; // Разрешаем отправку при ошибке
+                // При ошибке разрешаем отправку
+                return true;
+            }
+        }
+        
+        function showRestrictedView(type) {
+            const container = document.querySelector('.app-container');
+            if (!container) return;
+            
+            if (type === 'subscription') {
+                container.innerHTML = `
+                    <div class="access-restricted">
+                        <div class="restricted-content">
+                            <div class="restricted-icon">📢</div>
+                            <h2>Требуется подписка</h2>
+                            <p>Для отправки вопросов необходимо подписаться на наш Telegram-канал</p>
+                            <div class="channel-info">
+                                <strong>Канал:</strong> @questionstg
+                            </div>
+                            <div class="actions">
+                                <button class="btn btn-primary" onclick="openChannel()">
+                                    📢 Перейти в канал
+                                </button>
+                                <button class="btn btn-secondary" onclick="location.reload()">
+                                    🔄 Я подписался
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (type === 'tos') {
+                container.innerHTML = `
+                    <div class="access-restricted">
+                        <div class="restricted-content">
+                            <div class="restricted-icon">📝</div>
+                            <h2>Требуется подтверждение</h2>
+                            <p>Для отправки вопросов необходимо принять Пользовательское соглашение</p>
+                            <div class="actions">
+                                <button class="btn btn-primary" onclick="acceptTOS()">
+                                    ✅ Принять соглашение
+                                </button>
+                                <button class="btn btn-secondary" onclick="location.reload()">
+                                    🔄 Вернуться назад
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
             }
         }
         
@@ -154,11 +170,23 @@
             }
         }
         
-        function openTOS() {
-            if (tg && tg.openTelegramLink) {
-                tg.openTelegramLink(`https://t.me/questionstgbot?start=tos`);
-            } else {
-                window.open(`https://t.me/questionstgbot?start=tos`, '_blank');
+        async function acceptTOS() {
+            try {
+                const response = await fetch('/api/user/agree-tos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUserId })
+                });
+                
+                if (response.ok) {
+                    showNotification('✅ Соглашение принято!', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error('Ошибка сервера');
+                }
+            } catch (error) {
+                console.error('Ошибка принятия TOS:', error);
+                showNotification('❌ Ошибка, попробуйте позже', 'error');
             }
         }
         
@@ -398,74 +426,27 @@
             }
         }
         
-        // Стили для ask.html
-        const style = document.createElement('style');
-        style.textContent = `
-            .access-restricted {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: var(--tg-bg-color);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-                z-index: 10000;
-            }
+        function showNotification(message, type = 'info', duration = 3000) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
             
-            .restricted-content {
-                background: var(--tg-secondary-bg);
-                border-radius: 20px;
-                padding: 40px 30px;
-                max-width: 500px;
-                width: 100%;
-                text-align: center;
-                border: 1px solid var(--tg-border-color);
-                box-shadow: var(--tg-shadow);
-            }
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
             
-            .restricted-icon {
-                font-size: 80px;
-                margin-bottom: 20px;
-                opacity: 0.8;
-            }
+            notification.innerHTML = `
+                <div class="notification-icon">${icons[type] || '💡'}</div>
+                <div>${message}</div>
+            `;
             
-            .restricted-content h2 {
-                color: var(--tg-text-color);
-                margin-bottom: 15px;
-                font-size: 24px;
-            }
+            document.body.appendChild(notification);
             
-            .restricted-content p {
-                color: var(--tg-secondary-text);
-                margin-bottom: 20px;
-                line-height: 1.5;
+            if (duration > 0) {
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, duration);
             }
-            
-            .channel-info {
-                background: rgba(46, 141, 230, 0.1);
-                border: 1px solid rgba(46, 141, 230, 0.3);
-                border-radius: 10px;
-                padding: 15px;
-                margin: 20px 0;
-                font-size: 18px;
-            }
-            
-            .actions {
-                display: flex;
-                gap: 12px;
-                margin-top: 30px;
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-            
-            .actions .btn {
-                min-width: 180px;
-            }
-        `;
-        document.head.appendChild(style);
+        }
     </script>
 </body>
 </html>

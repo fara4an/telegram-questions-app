@@ -36,10 +36,15 @@ async function initDB() {
                 is_super_admin BOOLEAN DEFAULT FALSE,
                 invited_by BIGINT,
                 referral_code VARCHAR(50),
+                agreed_tos BOOLEAN DEFAULT FALSE,
+                subscribed_channel BOOLEAN DEFAULT FALSE,
+                last_check TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                first_name VARCHAR(255),
+                last_name VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
-            -- Таблица вопросов
+            -- Таблица вопросов (СОХРАНЯЕМ ТОЛЬКО ИНФО ОТПРАВИТЕЛЯ ЕСЛИ ОН НЕ АНОНИМ)
             CREATE TABLE IF NOT EXISTS questions (
                 id SERIAL PRIMARY KEY,
                 from_user_id BIGINT,
@@ -48,7 +53,8 @@ async function initDB() {
                 answer TEXT,
                 is_answered BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                answered_at TIMESTAMP
+                answered_at TIMESTAMP,
+                is_anonymous BOOLEAN DEFAULT TRUE
             );
             
             -- Таблица реферальных ссылок
@@ -78,50 +84,11 @@ async function initDB() {
         
         console.log('✅ Таблицы созданы/проверены');
         
-        // Добавляем недостающие колонки в таблицу users
-        await addMissingColumns();
-        
         // Проверяем и создаем главного админа
         await ensureMainAdmin();
         
     } catch (error) {
         console.error('❌ Ошибка БД:', error.message);
-    }
-}
-
-async function addMissingColumns() {
-    try {
-        console.log('🔍 Проверяем наличие колонок в таблице users...');
-        
-        const columns = await db.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'users'
-        `);
-        
-        const existingColumns = columns.rows.map(row => row.column_name);
-        console.log('Существующие колонки:', existingColumns);
-        
-        const requiredColumns = [
-            { name: 'agreed_tos', type: 'BOOLEAN DEFAULT FALSE' },
-            { name: 'subscribed_channel', type: 'BOOLEAN DEFAULT FALSE' },
-            { name: 'last_check', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
-            { name: 'first_name', type: 'VARCHAR(255)' },
-            { name: 'last_name', type: 'VARCHAR(255)' }
-        ];
-        
-        for (const column of requiredColumns) {
-            if (!existingColumns.includes(column.name)) {
-                console.log(`➕ Добавляем колонку ${column.name}...`);
-                await db.query(`ALTER TABLE users ADD COLUMN ${column.name} ${column.type}`);
-                console.log(`✅ Колонка ${column.name} добавлена`);
-            }
-        }
-        
-        console.log('✅ Структура таблицы users обновлена');
-        
-    } catch (error) {
-        console.error('❌ Ошибка добавления колонок:', error.message);
     }
 }
 
@@ -145,52 +112,60 @@ async function ensureMainAdmin() {
     }
 }
 
+// ПРОВЕРКА ПОДПИСКИ НА КАНАЛ
 async function checkChannelSubscription(userId) {
     try {
-        console.log(`🔍 Проверяем подписку пользователя ${userId} на канал...`);
+        console.log(`🔍 Проверяем подписку пользователя ${userId} на канал ${TELEGRAM_CHANNEL}...`);
         
-        // Временное решение - возвращаем true
-        const isSubscribed = true;
+        let isSubscribed = false;
         
-        console.log(`📢 Статус подписки пользователя ${userId}: ${isSubscribed}`);
+        if (process.env.NODE_ENV === 'production') {
+            try {
+                // Проверяем статус подписки через Telegram API
+                const chatMember = await bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
+                isSubscribed = ['member', 'administrator', 'creator'].includes(chatMember.status);
+                console.log(`Статус подписки пользователя ${userId}: ${chatMember.status}`);
+            } catch (error) {
+                console.error('Ошибка проверки подписки через API:', error.message);
+                // В случае ошибки считаем, что подписан (чтобы не блокировать)
+                isSubscribed = true;
+            }
+        } else {
+            // В разработке - считаем что подписан
+            isSubscribed = true;
+        }
         
+        // Обновляем статус в БД
         await db.query(
             `UPDATE users SET subscribed_channel = $1, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $2`,
             [isSubscribed, userId]
-        ).catch(err => {
-            console.error('Ошибка обновления статуса подписки:', err.message);
-        });
+        );
         
+        console.log(`📢 Итоговый статус подписки пользователя ${userId}: ${isSubscribed}`);
         return isSubscribed;
     } catch (error) {
         console.error('Ошибка проверки подписки:', error.message);
-        return true;
+        return false;
     }
 }
 
 async function checkTOSAgreement(userId) {
     try {
-        console.log(`📝 Проверяем TOS для пользователя ${userId}...`);
-        
         const result = await db.query(
             `SELECT agreed_tos FROM users WHERE telegram_id = $1`,
             [userId]
         );
         
         if (result.rows.length === 0) {
-            console.log(`👤 Пользователь ${userId} не найден, создаем запись...`);
+            // Создаем запись для нового пользователя
             await db.query(
                 `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) VALUES ($1, FALSE, FALSE)`,
                 [userId]
-            ).catch(err => {
-                console.error('Ошибка создания пользователя:', err.message);
-            });
+            );
             return false;
         }
         
-        const hasAgreed = result.rows[0].agreed_tos || false;
-        console.log(`✅ Пользователь ${userId} TOS: ${hasAgreed}`);
-        return hasAgreed;
+        return result.rows[0].agreed_tos || false;
     } catch (error) {
         console.error('Ошибка проверки TOS:', error.message);
         return false;
@@ -201,35 +176,31 @@ async function verifyUserAccess(userId) {
     try {
         console.log(`🔐 Проверяем доступ пользователя ${userId}...`);
         
+        // Создаем пользователя если не существует
         const userExists = await db.query(
             `SELECT telegram_id FROM users WHERE telegram_id = $1`,
             [userId]
         );
         
         if (userExists.rows.length === 0) {
-            console.log(`👤 Создаем запись для пользователя ${userId}...`);
             await db.query(
                 `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) 
-                 VALUES ($1, FALSE, FALSE) 
-                 ON CONFLICT (telegram_id) DO NOTHING`,
+                 VALUES ($1, FALSE, FALSE)`,
                 [userId]
-            ).catch(err => {
-                console.error('Ошибка создания пользователя:', err.message);
-            });
+            );
         }
         
+        // Проверяем подписку и TOS
         const [isSubscribed, agreedTOS] = await Promise.all([
             checkChannelSubscription(userId),
             checkTOSAgreement(userId)
         ]);
         
-        console.log(`📊 Результат проверки для ${userId}: subscribed=${isSubscribed}, tos=${agreedTOS}`);
-        
         return { isSubscribed, agreedTOS };
         
     } catch (error) {
-        console.error('❌ Критическая ошибка проверки доступа:', error.message);
-        return { isSubscribed: true, agreedTOS: false };
+        console.error('❌ Ошибка проверки доступа:', error.message);
+        return { isSubscribed: false, agreedTOS: false };
     }
 }
 
@@ -256,7 +227,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ========== АДМИН API ==========
-
 app.get('/api/admin/stats', async (req, res) => {
     try {
         const userId = req.query.userId;
@@ -299,81 +269,7 @@ app.get('/api/admin/stats', async (req, res) => {
     }
 });
 
-app.get('/api/admin/reports', async (req, res) => {
-    try {
-        const userId = req.query.userId;
-        
-        if (!userId) {
-            return res.status(400).json({ error: 'Не указан userId' });
-        }
-        
-        const result = await db.query(
-            `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        if (result.rows.length === 0 || (!result.rows[0].is_super_admin && !result.rows[0].is_admin)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-        
-        const reports = await db.query(`
-            SELECT r.*, 
-                   u1.username as reporter_username,
-                   u2.username as reported_username
-            FROM reports r
-            LEFT JOIN users u1 ON r.reporter_id = u1.telegram_id
-            LEFT JOIN users u2 ON r.reported_user_id = u2.telegram_id
-            ORDER BY r.created_at DESC
-            LIMIT 50
-        `);
-        
-        res.json({
-            success: true,
-            reports: reports.rows
-        });
-        
-    } catch (error) {
-        console.error('Error fetching reports:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.post('/api/admin/reports/:id/process', async (req, res) => {
-    try {
-        const { userId, action, notes } = req.body;
-        const reportId = req.params.id;
-        
-        if (!userId || !action) {
-            return res.status(400).json({ error: 'Не указаны параметры' });
-        }
-        
-        const result = await db.query(
-            `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        if (result.rows.length === 0 || (!result.rows[0].is_super_admin && !result.rows[0].is_admin)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-        
-        await db.query(
-            `UPDATE reports SET status = $1, admin_notes = $2, resolved_at = CURRENT_TIMESTAMP WHERE id = $3`,
-            [action, notes, reportId]
-        );
-        
-        res.json({
-            success: true,
-            message: 'Жалоба обработана'
-        });
-        
-    } catch (error) {
-        console.error('Error processing report:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
 // ========== ПОЛЬЗОВАТЕЛЬСКИЕ API ==========
-
 app.get('/api/user/access/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
@@ -441,17 +337,20 @@ app.post('/api/user/report', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны обязательные параметры' });
         }
         
+        // Проверяем доступ пользователя
         const access = await verifyUserAccess(userId);
         if (!access.isSubscribed || !access.agreedTOS) {
             return res.status(403).json({ error: 'Доступ запрещен. Проверьте подписку и соглашение.' });
         }
         
+        // Сохраняем жалобу
         const result = await db.query(`
             INSERT INTO reports (reporter_id, reported_user_id, question_id, reason) 
             VALUES ($1, $2, $3, $4) 
             RETURNING id
         `, [userId, reportedUserId || null, questionId || null, reason]);
         
+        // Уведомляем админов
         const admins = await db.query(
             `SELECT telegram_id FROM users WHERE is_admin = TRUE OR is_super_admin = TRUE`
         );
@@ -516,150 +415,29 @@ app.get('/api/tos', (req, res) => {
     });
 });
 
-app.get('/api/user/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT telegram_id, username FROM users WHERE telegram_id = $1`,
-            [req.params.userId]
-        );
-        
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]);
-        } else {
-            res.json({
-                telegram_id: req.params.userId,
-                username: null
-            });
-        }
-    } catch (error) {
-        console.error('Error fetching user:', error.message);
-        res.json({
-            telegram_id: req.params.userId,
-            username: null
-        });
-    }
-});
-
-app.get('/api/user/role/:userId', async (req, res) => {
-    try {
-        const result = await db.query(
-            `SELECT telegram_id, username, is_admin, is_super_admin 
-             FROM users WHERE telegram_id = $1`,
-            [req.params.userId]
-        );
-        
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]);
-        } else {
-            res.json({
-                telegram_id: req.params.userId,
-                username: null,
-                is_admin: false,
-                is_super_admin: false
-            });
-        }
-    } catch (error) {
-        console.error('Error fetching user role:', error.message);
-        res.json({
-            telegram_id: req.params.userId,
-            username: null,
-            is_admin: false,
-            is_super_admin: false
-        });
-    }
-});
-
-app.post('/api/admin/make-admin', async (req, res) => {
-    try {
-        const { userId, targetUserId } = req.body;
-        
-        if (!userId || !targetUserId) {
-            return res.status(400).json({ error: 'Не указаны параметры' });
-        }
-        
-        const result = await db.query(
-            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        if (result.rows.length === 0 || !result.rows[0].is_super_admin) {
-            return res.status(403).json({ error: 'Только главный админ может создавать админов' });
-        }
-        
-        await db.query(
-            `UPDATE users SET is_admin = TRUE WHERE telegram_id = $1`,
-            [targetUserId]
-        );
-        
-        res.json({ 
-            success: true, 
-            message: 'Пользователь назначен админом'
-        });
-        
-    } catch (error) {
-        console.error('Error making admin:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.post('/api/admin/create-referral', async (req, res) => {
-    try {
-        const { userId, maxUses = 100 } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({ error: 'Не указан userId' });
-        }
-        
-        const result = await db.query(
-            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        if (result.rows.length === 0 || (!result.rows[0].is_admin && !result.rows[0].is_super_admin)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-        
-        function generateReferralCode() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let code = '';
-            for (let i = 0; i < 8; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return code;
-        }
-        
-        const referralCode = generateReferralCode();
-        const botInfo = await bot.telegram.getMe();
-        const referralLink = `https://t.me/${botInfo.username}?start=ref_${referralCode}`;
-        
-        await db.query(
-            `INSERT INTO referrals (admin_id, referral_code, max_uses) 
-             VALUES ($1, $2, $3)`,
-            [userId, referralCode, maxUses]
-        );
-        
-        res.json({ 
-            success: true, 
-            referralCode,
-            referralLink,
-            message: 'Реферальная ссылка создана'
-        });
-        
-    } catch (error) {
-        console.error('Error creating referral:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
+// API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ДЛЯ АНОНИМНОСТИ
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
-        const result = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.to_user_id = $1 
-             ORDER BY q.created_at DESC`,
-            [req.params.userId]
-        );
+        const result = await db.query(`
+            SELECT 
+                q.id,
+                q.text,
+                q.answer,
+                q.is_answered,
+                q.created_at,
+                q.answered_at,
+                -- НИКОГДА не показываем from_user_id клиенту!
+                CASE 
+                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
+                    WHEN u.username IS NOT NULL THEN '@' || u.username
+                    ELSE '👤 Пользователь'
+                END as from_username
+            FROM questions q
+            LEFT JOIN users u ON q.from_user_id = u.telegram_id AND q.is_anonymous = FALSE
+            WHERE q.to_user_id = $1 
+            ORDER BY q.created_at DESC
+        `, [req.params.userId]);
+        
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching incoming questions:', error.message);
@@ -669,14 +447,22 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
 
 app.get('/api/questions/sent/:userId', async (req, res) => {
     try {
-        const result = await db.query(
-            `SELECT q.*, u.username as to_username 
-             FROM questions q
-             LEFT JOIN users u ON q.to_user_id = u.telegram_id
-             WHERE q.from_user_id = $1 
-             ORDER BY q.created_at DESC`,
-            [req.params.userId]
-        );
+        const result = await db.query(`
+            SELECT 
+                q.id,
+                q.text,
+                q.answer,
+                q.is_answered,
+                q.created_at,
+                q.answered_at,
+                u.username as to_username,
+                q.to_user_id
+            FROM questions q
+            LEFT JOIN users u ON q.to_user_id = u.telegram_id
+            WHERE q.from_user_id = $1 
+            ORDER BY q.created_at DESC
+        `, [req.params.userId]);
+        
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching sent questions:', error.message);
@@ -686,13 +472,24 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
 
 app.get('/api/question/:id', async (req, res) => {
     try {
-        const result = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.id = $1`,
-            [req.params.id]
-        );
+        const result = await db.query(`
+            SELECT 
+                q.id,
+                q.text,
+                q.answer,
+                q.is_answered,
+                q.created_at,
+                q.answered_at,
+                -- Скрываем информацию об отправителе для анонимных вопросов
+                CASE 
+                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
+                    WHEN u.username IS NOT NULL THEN '@' || u.username
+                    ELSE '👤 Пользователь'
+                END as from_username
+            FROM questions q
+            LEFT JOIN users u ON q.from_user_id = u.telegram_id AND q.is_anonymous = FALSE
+            WHERE q.id = $1
+        `, [req.params.id]);
         
         if (result.rows.length > 0) {
             res.json(result.rows[0]);
@@ -713,6 +510,14 @@ app.post('/api/questions', async (req, res) => {
             return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
         }
         
+        // Проверяем доступ отправителя если он не аноним
+        if (from_user_id) {
+            const access = await verifyUserAccess(from_user_id);
+            if (!access.isSubscribed || !access.agreedTOS) {
+                return res.status(403).json({ error: 'Отправитель не имеет доступа к сервису' });
+            }
+        }
+        
         let invitedBy = null;
         if (referral_code) {
             const referralResult = await db.query(
@@ -728,6 +533,7 @@ app.post('/api/questions', async (req, res) => {
             }
         }
         
+        // Сохраняем пользователя если он не аноним
         if (from_user_id) {
             try {
                 await db.query(
@@ -744,14 +550,17 @@ app.post('/api/questions', async (req, res) => {
             }
         }
         
+        // Создаем вопрос с флагом анонимности
+        const isAnonymous = !from_user_id;
         const result = await db.query(
-            `INSERT INTO questions (from_user_id, to_user_id, text) 
-             VALUES ($1, $2, $3) RETURNING *`,
-            [from_user_id || null, to_user_id, text]
+            `INSERT INTO questions (from_user_id, to_user_id, text, is_anonymous) 
+             VALUES ($1, $2, $3, $4) RETURNING id, text, created_at, is_anonymous`,
+            [from_user_id || null, to_user_id, text, isAnonymous]
         );
         
         const question = result.rows[0];
         
+        // Отправляем уведомление получателю БЕЗ информации об отправителе
         try {
             const questionText = question.text.length > 80 ? 
                 question.text.substring(0, 80) + '...' : question.text;
@@ -809,6 +618,7 @@ app.post('/api/questions/:id/answer', async (req, res) => {
         
         const question = result.rows[0];
         
+        // Уведомляем отправителя если он не аноним
         if (question.from_user_id) {
             try {
                 const questionText = question.text.length > 60 ? 
@@ -911,11 +721,10 @@ app.post('/api/share-to-chat', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны параметры' });
         }
 
-        const questionResult = await db.query(
-            `SELECT q.*, u.username as from_username 
-             FROM questions q
-             LEFT JOIN users u ON q.from_user_id = u.telegram_id
-             WHERE q.id = $1 AND q.to_user_id = $2 AND q.is_answered = TRUE`,
+        const questionResult = await db.query(`
+            SELECT q.* 
+            FROM questions q
+            WHERE q.id = $1 AND q.to_user_id = $2 AND q.is_answered = TRUE`,
             [questionId, userId]
         );
         
@@ -981,8 +790,7 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
     bot.handleUpdate(req.body, res);
 });
 
-// УБРАЛИ ВСЮ ПРОВЕРКУ ПОДПИСКИ И TOS ИЗ МИДЛВАРЫ БОТА
-
+// БОТ С ПРОВЕРКОЙ ДОСТУПА
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
     const firstName = ctx.from.first_name || 'пользователь';
@@ -992,6 +800,51 @@ bot.start(async (ctx) => {
     if (ctx.startPayload && ctx.startPayload.startsWith('ask_')) {
         const targetUserId = ctx.startPayload.replace('ask_', '');
         
+        // Проверяем доступ пользователя
+        const access = await verifyUserAccess(userId);
+        
+        if (!access.isSubscribed) {
+            await ctx.reply(
+                `👋 *${firstName}, привет!*\n\n` +
+                `Чтобы задать анонимный вопрос, нужно подписаться на наш канал:\n\n` +
+                `📢 ${TELEGRAM_CHANNEL}\n\n` +
+                `После подписки нажми /start`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            {
+                                text: '📢 Подписаться на канал',
+                                url: `https://t.me/questionstg`
+                            }
+                        ]]
+                    }
+                }
+            );
+            return;
+        }
+        
+        if (!access.agreedTOS) {
+            await ctx.reply(
+                `👋 *${firstName}, привет!*\n\n` +
+                `Для отправки вопросов необходимо принять Пользовательское соглашение.\n\n` +
+                `Нажмите кнопку ниже, чтобы ознакомиться и принять:`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            {
+                                text: '📝 Принять соглашение',
+                                callback_data: 'accept_tos'
+                            }
+                        ]]
+                    }
+                }
+            );
+            return;
+        }
+        
+        // Если доступ есть - показываем форму
         await ctx.reply(
             `👋 *${firstName}, привет!*\n\n` +
             `Ты перешёл по ссылке, чтобы задать *анонимный вопрос*.\n\n` +
@@ -1019,29 +872,8 @@ bot.start(async (ctx) => {
             }
         );
         
-    } else if (ctx.startPayload && ctx.startPayload.startsWith('ref_')) {
-        const referralCode = ctx.startPayload.replace('ref_', '');
-        
-        await ctx.reply(
-            `👋 *${firstName}, привет!*\n\n` +
-            `Ты перешёл по реферальной ссылке.\n\n` +
-            `Нажми кнопку ниже, чтобы начать использование:`,
-            {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: '🚀 НАЧАТЬ РАБОТУ',
-                                web_app: { url: WEB_APP_URL }
-                            }
-                        ]
-                    ]
-                }
-            }
-        );
-        
     } else {
+        // Обычный старт
         const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
         
         await ctx.reply(
@@ -1072,7 +904,25 @@ bot.start(async (ctx) => {
     }
 });
 
-// УПРОЩАЕМ КОМАНДЫ БОТА - УБИРАЕМ ПРОВЕРКИ
+// Обработчик принятия TOS
+bot.action('accept_tos', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        await db.query(
+            `UPDATE users SET agreed_tos = TRUE WHERE telegram_id = $1`,
+            [ctx.from.id]
+        );
+        
+        await ctx.reply(
+            `✅ *Пользовательское соглашение принято!*\n\n` +
+            `Теперь вы можете задавать вопросы. Нажмите /start для продолжения.`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        console.error('Ошибка принятия TOS:', error.message);
+        await ctx.answerCbQuery('❌ Ошибка, попробуйте позже');
+    }
+});
 
 bot.command('app', (ctx) => {
     ctx.reply('Нажми кнопку ниже, чтобы открыть приложение:', {
@@ -1115,7 +965,7 @@ bot.action('how_it_works', async (ctx) => {
         `5. Он может ответить на него в приложении\n\n` +
         `*🔒 Анонимность:*\n` +
         `- Получатель *не увидит* твой профиль\n` +
-        `- Ты *не узнаешь*, ответил ли он\n` +
+        `- Ты *узнаешь*, ответил ли он\n` +
         `- Можно задавать сколько угодно вопросов`,
         { parse_mode: 'Markdown' }
     );
@@ -1138,7 +988,7 @@ async function startServer() {
         app.listen(PORT, async () => {
             console.log(`🚀 Сервер запущен на порту ${PORT}`);
             console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
-            console.log(`📢 Канал: @questionstg`);
+            console.log(`📢 Канал: ${TELEGRAM_CHANNEL}`);
 
             try {
                 const botInfo = await bot.telegram.getMe();
