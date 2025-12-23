@@ -588,100 +588,101 @@
     </div>
 
     <!-- МОДАЛКА ДЛЯ ЖАЛОБ -->
-    <div id="reportModal" class="modal-overlay" style="display: none;">
-        <div class="answer-modal">
-            <div class="modal-header">
-                <h3>
-                    <span>⚠️</span>
-                    Отправка жалобы
-                </h3>
-                <button class="close-btn" id="closeReportModal">×</button>
+<div id="reportModal" class="modal-overlay" style="display: none;">
+    <div class="answer-modal" style="max-width: 95%; max-height: 90vh; margin: 10px;">
+        <div class="modal-header" style="position: sticky; top: 0; z-index: 10; background: var(--tg-secondary-bg);">
+            <h3>
+                <span>⚠️</span>
+                Отправка жалобы
+            </h3>
+            <button class="close-btn" onclick="closeReportModal()">×</button>
+        </div>
+        
+        <div class="answer-form" style="padding: 15px; max-height: 70vh; overflow-y: auto;">
+            <div class="form-group">
+                <label class="form-label">Выберите причину:</label>
+                <div id="reportReasonsList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;">
+                    <!-- Причины будут загружены динамически -->
+                </div>
+                <input type="hidden" id="reportReason">
             </div>
             
-            <div class="answer-form">
-                <div class="form-group">
-                    <label class="form-label">Выберите причину:</label>
-                    <div id="reportReasonsList" style="margin-bottom: 20px;">
-                        <!-- Причины будут загружены динамически -->
-                    </div>
-                    <input type="hidden" id="reportReason">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Дополнительные детали (необязательно):</label>
-                    <textarea 
-                        id="reportDetails" 
-                        class="answer-textarea"
-                        placeholder="Опишите подробнее, если это необходимо..."
-                        maxlength="500"
-                        rows="3"
-                    ></textarea>
-                    <div class="char-counter">
-                        <span id="reportDetailsCharCount">0</span> / 500 символов
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">ID вопроса (если есть):</label>
-                    <input 
-                        type="number" 
-                        id="reportQuestionId" 
-                        class="answer-textarea"
-                        placeholder="789"
-                        style="height: auto; min-height: 44px;"
-                    >
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">ID пользователя (если знаете):</label>
-                    <input 
-                        type="number" 
-                        id="reportUserId" 
-                        class="answer-textarea"
-                        placeholder="123456789"
-                        style="height: auto; min-height: 44px;"
-                    >
-                </div>
-                
-                <div style="
-                    background: rgba(255, 152, 0, 0.1);
-                    border-radius: 10px;
-                    padding: 15px;
-                    margin-bottom: 20px;
-                    border-left: 3px solid #ff9800;
-                ">
-                    <div style="display: flex; align-items: flex-start; gap: 10px;">
-                        <div style="
-                            width: 28px;
-                            height: 28px;
-                            background: #ff9800;
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            color: white;
-                            font-size: 14px;
-                            flex-shrink: 0;
-                        ">ℹ️</div>
-                        <div style="font-size: 13px; color: #ffb74d;">
-                            <strong>Важно:</strong> Ложные жалобы могут привести к ограничению доступа к сервису. 
-                            Пожалуйста, выбирайте причину внимательно.
-                        </div>
-                    </div>
+            <div class="form-group">
+                <label class="form-label">Дополнительные детали (необязательно):</label>
+                <textarea 
+                    id="reportDetails" 
+                    class="answer-textarea"
+                    placeholder="Опишите подробнее, если это необходимо..."
+                    maxlength="500"
+                    rows="3"
+                    style="min-height: 80px;"
+                ></textarea>
+                <div class="char-counter">
+                    <span id="reportDetailsCharCount">0</span> / 500 символов
                 </div>
             </div>
             
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeReportModal()">
-                    Отмена
-                </button>
-                <button class="btn btn-primary" id="submitReportBtn">
-                    <span>📤</span>
-                    Отправить жалобу
-                </button>
+            <div class="form-group">
+                <label class="form-label">ID вопроса (если есть):</label>
+                <input 
+                    type="number" 
+                    id="reportQuestionId" 
+                    class="answer-textarea"
+                    placeholder="789"
+                    style="height: auto; min-height: 44px; width: 100%; padding: 10px;"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">ID пользователя (если знаете):</label>
+                <input 
+                    type="number" 
+                    id="reportUserId" 
+                    class="answer-textarea"
+                    placeholder="123456789"
+                    style="height: auto; min-height: 44px; width: 100%; padding: 10px;"
+                >
+            </div>
+            
+            <div style="
+                background: rgba(255, 152, 0, 0.1);
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-left: 3px solid #ff9800;
+            ">
+                <div style="display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="
+                        width: 28px;
+                        height: 28px;
+                        background: #ff9800;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 14px;
+                        flex-shrink: 0;
+                    ">ℹ️</div>
+                    <div style="font-size: 13px; color: #ffb74d;">
+                        <strong>Важно:</strong> Ложные жалобы могут привести к ограничению доступа к сервису. 
+                        Пожалуйста, выбирайте причину внимательно.
+                    </div>
+                </div>
             </div>
         </div>
+        
+        <div class="modal-footer" style="position: sticky; bottom: 0; z-index: 10; background: var(--tg-secondary-bg);">
+            <button class="btn btn-secondary" onclick="closeReportModal()" style="flex: 1; min-width: 0;">
+                Отмена
+            </button>
+            <button class="btn btn-primary" id="submitReportBtn" style="flex: 1; min-width: 0;">
+                <span>📤</span>
+                Отправить жалобу
+            </button>
+        </div>
     </div>
+</div>
     
     <script src="app.js"></script>
     <script>

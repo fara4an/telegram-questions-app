@@ -1170,6 +1170,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     }
 });
 
+// ОБНОВЛЕННАЯ ФУНКЦИЯ: отправка полных вопросов и ответов в чат
 app.post('/api/share-to-chat', async (req, res) => {
     try {
         const { userId, questionId } = req.body;
@@ -1192,9 +1193,10 @@ app.post('/api/share-to-chat', async (req, res) => {
         const botInfo = await bot.telegram.getMe();
         const userLink = `https://t.me/${botInfo.username}?start=ask_${userId}`;
         
+        // ИЗМЕНЕНИЕ: Отправляем полный текст вопроса и ответа (без обрезания)
         const messageText = `🎯 *Мой ответ на анонимный вопрос!*\n\n` +
-                           `💬 *Вопрос:*\n"${question.text.length > 80 ? question.text.substring(0, 80) + '...' : question.text}"\n\n` +
-                           `💡 *Мой ответ:*\n"${question.answer.length > 80 ? question.answer.substring(0, 80) + '...' : question.answer}"\n\n` +
+                           `💬 *Вопрос:*\n"${question.text}"\n\n` +
+                           `💡 *Мой ответ:*\n"${question.answer}"\n\n` +
                            `👇 *Хочешь задать мне вопрос?*\n` +
                            `Нажми кнопку ниже!`;
         
