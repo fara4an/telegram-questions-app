@@ -147,6 +147,20 @@ async function loadAdminPanel() {
         
         const data = await response.json();
         
+        // Загружаем пользователей если суперадмин
+        let usersListHTML = '';
+        if (isSuperAdmin) {
+            try {
+                const usersResponse = await fetch(`/api/admin/users?adminId=${userId}`);
+                if (usersResponse.ok) {
+                    const usersData = await usersResponse.json();
+                    usersListHTML = renderUsersList(usersData.users);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки пользователей:', error);
+            }
+        }
+        
         // Рендерим админ-панель
         adminPanel.innerHTML = `
             <div class="admin-header">
@@ -176,6 +190,13 @@ async function loadAdminPanel() {
                     </div>
                 </div>
             </div>
+            
+            ${isSuperAdmin ? `
+            <div class="admin-section">
+                <h3><span>👥</span> Пользователи системы</h3>
+                ${usersListHTML || '<p style="color: var(--tg-secondary-text);">Загрузка списка пользователей...</p>'}
+            </div>
+            ` : ''}
             
             <div class="admin-section">
                 <h3><span>⚠️</span> Жалобы</h3>
@@ -237,6 +258,71 @@ async function loadAdminPanel() {
             `;
         }
     }
+}
+
+function renderUsersList(users) {
+    if (!users || users.length === 0) {
+        return '<p style="color: var(--tg-secondary-text);">Нет пользователей</p>';
+    }
+    
+    return `
+        <div class="users-table-container">
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Аватар</th>
+                        <th>Имя</th>
+                        <th>ID</th>
+                        <th>Статус</th>
+                        <th>Дата регистрации</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${users.map(user => `
+                        <tr>
+                            <td>
+                                <div class="mini-avatar" style="
+                                    width: 32px;
+                                    height: 32px;
+                                    background: linear-gradient(135deg, var(--tg-accent-color), #6c5ce7);
+                                    border-radius: 50%;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-weight: 600;
+                                    font-size: 14px;
+                                ">
+                                    ${(user.username || user.first_name || 'U').charAt(0).toUpperCase()}
+                                </div>
+                            </td>
+                            <td>
+                                ${user.username ? '@' + user.username : user.first_name || 'Пользователь'}
+                                ${user.is_super_admin ? '👑' : user.is_admin ? '🛠️' : ''}
+                            </td>
+                            <td><code>${user.telegram_id}</code></td>
+                            <td>
+                                <span style="
+                                    padding: 2px 6px;
+                                    border-radius: 12px;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    background: ${user.subscribed_channel && user.agreed_tos ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 152, 0, 0.2)'};
+                                    color: ${user.subscribed_channel && user.agreed_tos ? 'var(--tg-success)' : 'var(--tg-warning)'};
+                                ">
+                                    ${user.subscribed_channel && user.agreed_tos ? 'Активен' : 'Не активен'}
+                                </span>
+                            </td>
+                            <td>${formatDate(user.created_at)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 10px; color: var(--tg-secondary-text); font-size: 12px;">
+            Всего пользователей: ${users.length}
+        </div>
+    `;
 }
 
 function makeUserAdmin() {

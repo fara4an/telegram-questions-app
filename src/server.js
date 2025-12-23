@@ -226,7 +226,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// ========== НОВЫЙ API для проверки роли пользователя ==========
+// ========== АДМИН API ==========
+
+// Получение роли пользователя
 app.get('/api/user/role/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -245,7 +247,50 @@ app.get('/api/user/role/:userId', async (req, res) => {
     }
 });
 
-// ========== АДМИН API ==========
+// Получение списка всех пользователей (только для суперадмина)
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        const adminId = req.query.adminId;
+        
+        if (!adminId) {
+            return res.status(400).json({ error: 'Не указан ID администратора' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
+            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
+        }
+        
+        const usersResult = await db.query(`
+            SELECT 
+                telegram_id,
+                username,
+                first_name,
+                last_name,
+                is_admin,
+                is_super_admin,
+                agreed_tos,
+                subscribed_channel,
+                created_at
+            FROM users 
+            ORDER BY created_at DESC
+        `);
+        
+        res.json({
+            success: true,
+            users: usersResult.rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching users:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 app.get('/api/admin/stats', async (req, res) => {
     try {
         const userId = req.query.userId;
@@ -434,7 +479,7 @@ app.get('/api/tos', (req, res) => {
     });
 });
 
-// ========== API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ДЛЯ АНОНИМНОСТИ ==========
+// ========== API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ==========
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
         const result = await db.query(`
