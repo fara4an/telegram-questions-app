@@ -145,6 +145,24 @@ async function initDB() {
                                  WHERE table_name='reports' AND column_name='details') THEN
                         ALTER TABLE reports ADD COLUMN details TEXT;
                     END IF;
+                    
+                    -- Проверяем и добавляем колонку admin_id в таблицу reports
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                 WHERE table_name='reports' AND column_name='admin_id') THEN
+                        ALTER TABLE reports ADD COLUMN admin_id BIGINT;
+                    END IF;
+                    
+                    -- Проверяем и добавляем колонку admin_notes в таблицу reports
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                 WHERE table_name='reports' AND column_name='admin_notes') THEN
+                        ALTER TABLE reports ADD COLUMN admin_notes TEXT;
+                    END IF;
+                    
+                    -- Проверяем и добавляем колонку action_taken в таблицу reports
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                 WHERE table_name='reports' AND column_name='action_taken') THEN
+                        ALTER TABLE reports ADD COLUMN action_taken VARCHAR(50);
+                    END IF;
                 END $$;
             `);
             console.log('✅ Дополнительные колонки проверены/добавлены');
@@ -627,8 +645,9 @@ app.post('/api/admin/delete-data', async (req, res) => {
                 `UPDATE questions SET is_deleted = TRUE WHERE from_user_id = $1 OR to_user_id = $1`,
                 [targetUserId]
             );
+            // Обновляем жалобы связанные с этим пользователем
             await db.query(
-                `UPDATE reports SET status = 'resolved' WHERE reported_user_id = $1 OR reporter_id = $1`,
+                `UPDATE reports SET status = 'resolved', admin_notes = 'Данные удалены' WHERE reported_user_id = $1 OR reporter_id = $1`,
                 [targetUserId]
             );
         } else if (deleteType === 'account') {

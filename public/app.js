@@ -1021,11 +1021,11 @@ function addAdminTab() {
 function addAdminModals() {
     const modals = `
         <!-- Модалка блокировки пользователя -->
-        <div id="blockUserModal" class="modal-overlay" style="display: none;">
+        <div id="blockUserModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 500px;">
                 <div class="modal-header">
                     <h3>🚫 Блокировка пользователя</h3>
-                    <button class="close-btn" onclick="closeModal('blockUserModal')">×</button>
+                    <button class="btn-close" onclick="closeModal('blockUserModal')">×</button>
                 </div>
                 <div class="modal-body">
                     <p>Пользователь: <strong id="blockUsername"></strong></p>
@@ -1070,11 +1070,11 @@ function addAdminModals() {
         </div>
         
         <!-- Модалка блокировки из жалобы -->
-        <div id="blockFromReportModal" class="modal-overlay" style="display: none;">
+        <div id="blockFromReportModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 500px;">
                 <div class="modal-header">
                     <h3>🚫 Блокировка из жалобы</h3>
-                    <button class="close-btn" onclick="closeModal('blockFromReportModal')">×</button>
+                    <button class="btn-close" onclick="closeModal('blockFromReportModal')">×</button>
                 </div>
                 <div class="modal-body">
                     <p>Пользователь: <strong id="blockFromReportUsername"></strong></p>
@@ -1120,11 +1120,11 @@ function addAdminModals() {
         </div>
         
         <!-- Модалка удаления данных -->
-        <div id="dataDeletionModal" class="modal-overlay" style="display: none;">
+        <div id="dataDeletionModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 500px;">
                 <div class="modal-header">
                     <h3>🗑️ Удаление данных</h3>
-                    <button class="close-btn" onclick="closeModal('dataDeletionModal')">×</button>
+                    <button class="btn-close" onclick="closeModal('dataDeletionModal')">×</button>
                 </div>
                 <div class="modal-body">
                     <div style="margin-bottom: 20px;">
@@ -1162,11 +1162,11 @@ function addAdminModals() {
         </div>
         
         <!-- Модалка управления пользователями -->
-        <div id="userManagementModal" class="modal-overlay" style="display: none;">
+        <div id="userManagementModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 500px;">
                 <div class="modal-header">
                     <h3>👤 Управление пользователями</h3>
-                    <button class="close-btn" onclick="closeModal('userManagementModal')">×</button>
+                    <button class="btn-close" onclick="closeModal('userManagementModal')">×</button>
                 </div>
                 <div class="modal-body">
                     <div style="text-align: center; padding: 40px 20px;">

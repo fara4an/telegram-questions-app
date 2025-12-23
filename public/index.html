@@ -7,87 +7,243 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Дополнительные стили для адаптивности */
-        @media (max-width: 480px) {
-            .btn-group {
-                flex-direction: column !important;
+        /* Модальные окна - Telegram style */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal.active {
+            display: flex;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: var(--tg-secondary-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow: hidden;
+            border: 1px solid var(--tg-border-color);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--tg-border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--tg-bg-color);
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--tg-text-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            color: var(--tg-secondary-text);
+            font-size: 28px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .btn-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--tg-text-color);
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 50vh;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--tg-border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: var(--tg-bg-color);
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                backdrop-filter: blur(0);
             }
-            
-            .btn-group .btn {
-                width: 100% !important;
-                margin-bottom: 8px !important;
-            }
-            
-            .question-meta {
-                flex-direction: column !important;
-                align-items: flex-start !important;
-                gap: 8px !important;
-            }
-            
-            .question-from {
-                align-self: flex-start !important;
-            }
-            
-            .modal-content {
-                margin: 10px !important;
-                max-height: 90vh !important;
-            }
-            
-            .modal-footer {
-                flex-direction: column !important;
-                gap: 8px !important;
-            }
-            
-            .modal-footer .btn {
-                width: 100% !important;
-            }
-            
-            .report-reason-item {
-                padding: 12px !important;
-            }
-            
-            .report-reason-item label {
-                font-size: 14px !important;
-            }
-            
-            .users-table {
-                font-size: 12px !important;
-            }
-            
-            .users-table th,
-            .users-table td {
-                padding: 6px 8px !important;
+            to {
+                opacity: 1;
+                backdrop-filter: blur(10px);
             }
         }
-        
-        @media (max-width: 360px) {
-            .header h1 {
-                font-size: 18px !important;
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-30px);
+                opacity: 0;
             }
-            
-            .tab {
-                padding: 12px 6px !important;
-                font-size: 13px !important;
-            }
-            
-            .badge {
-                top: 4px !important;
-                right: 4px !important;
-                font-size: 10px !important;
-                min-width: 16px !important;
-                height: 16px !important;
-            }
-            
-            .question-text {
-                font-size: 14px !important;
-                padding: 10px !important;
-            }
-            
-            .answer-bubble {
-                padding: 10px !important;
+            to {
+                transform: translateY(0);
+                opacity: 1;
             }
         }
-        
+
+        /* Modal overlay для старых модалок */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--tg-secondary-text);
+            font-size: 28px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--tg-text-color);
+        }
+
+        /* Answer modal стили */
+        .answer-modal {
+            background: var(--tg-secondary-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow: hidden;
+            border: 1px solid var(--tg-border-color);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .question-preview {
+            background: var(--tg-input-bg);
+            margin: 20px;
+            padding: 15px;
+            border-radius: 12px;
+            border-left: 4px solid var(--tg-accent-color);
+        }
+
+        .question-label {
+            color: var(--tg-secondary-text);
+            font-size: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .question-text-preview {
+            color: var(--tg-text-color);
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .answer-form {
+            padding: 0 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--tg-text-color);
+        }
+
+        .answer-textarea {
+            width: 100%;
+            padding: 16px;
+            border: 2px solid var(--tg-border-color);
+            border-radius: 12px;
+            background: var(--tg-input-bg);
+            color: var(--tg-text-color);
+            font-family: inherit;
+            font-size: 15px;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .answer-textarea:focus {
+            outline: none;
+            border-color: var(--tg-accent-color);
+        }
+
+        .char-counter {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--tg-secondary-text);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: var(--tg-border-color);
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
         /* Стили для модалки жалоб с причинами */
         .report-reason-item {
             background: var(--tg-input-bg);
@@ -101,63 +257,135 @@
             align-items: center;
             gap: 12px;
         }
-        
+
         .report-reason-item:hover {
             background: rgba(46, 141, 230, 0.1);
             border-color: var(--tg-accent-color);
         }
-        
+
         .report-reason-item.selected {
             background: rgba(46, 141, 230, 0.15);
             border-color: var(--tg-accent-color);
             border-left: 4px solid var(--tg-accent-color);
         }
-        
+
         .report-reason-item input[type="radio"] {
             flex-shrink: 0;
         }
-        
+
         .report-reason-item label {
             flex: 1;
             cursor: pointer;
             margin: 0;
         }
-        
-        /* Улучшенные кнопки для мобильных */
-        .btn-action {
-            padding: 8px 12px !important;
-            font-size: 13px !important;
-            border-radius: 8px !important;
-            min-height: 36px !important;
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .modal-content,
+            .answer-modal {
+                margin: 10px;
+                max-height: 90vh;
+            }
+            
+            .modal-footer {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .modal-footer .btn {
+                width: 100%;
+            }
         }
-        
-        /* Улучшенный скролл на мобильных */
-        .tab-content {
-            -webkit-overflow-scrolling: touch !important;
-            scroll-behavior: smooth !important;
+
+        @media (max-width: 480px) {
+            .modal {
+                padding: 10px;
+                align-items: flex-start;
+                padding-top: 60px;
+            }
+            
+            .modal-content {
+                max-height: 80vh;
+            }
+            
+            .report-reason-item {
+                padding: 12px;
+            }
         }
-        
-        /* Улучшенные поля ввода на мобильных */
-        input, textarea, select {
-            font-size: 16px !important; /* Предотвращает зумирование на iOS */
-        }
-        
-        /* Улучшенные таблицы на мобильных */
+
+        /* Admin таблицы */
         .users-table-container {
             overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+            margin-top: 15px;
         }
-        
-        /* Улучшенные модальные окна на мобильных */
-        .modal-overlay {
-            padding: 10px !important;
-            align-items: flex-start !important;
-            padding-top: 60px !important;
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
         }
-        
-        .modal-content {
-            max-height: 80vh !important;
-            overflow-y: auto !important;
+
+        .users-table th {
+            background: var(--tg-input-bg);
+            color: var(--tg-secondary-text);
+            text-align: left;
+            padding: 12px 15px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--tg-border-color);
+        }
+
+        .users-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--tg-border-color);
+            vertical-align: middle;
+        }
+
+        .users-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .mini-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--tg-accent-color), #6c5ce7);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .btn-action {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        /* Report options */
+        .report-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .report-options .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn.active {
+            background: var(--tg-accent-color) !important;
+            color: white !important;
         }
     </style>
 </head>
@@ -465,25 +693,6 @@
             if (detailsInput && charCount) {
                 detailsInput.addEventListener('input', function() {
                     charCount.textContent = this.value.length;
-                });
-            }
-            
-            // Добавляем обработчик для проверки типа блокировки
-            const blockPermanent = document.getElementById('blockPermanent');
-            const blockDuration = document.getElementById('blockDuration');
-            
-            if (blockPermanent && blockDuration) {
-                blockPermanent.addEventListener('change', function() {
-                    blockDuration.disabled = this.checked;
-                });
-            }
-            
-            const blockFromReportPermanent = document.getElementById('blockFromReportPermanent');
-            const blockFromReportDuration = document.getElementById('blockFromReportDuration');
-            
-            if (blockFromReportPermanent && blockFromReportDuration) {
-                blockFromReportPermanent.addEventListener('change', function() {
-                    blockFromReportDuration.disabled = this.checked;
                 });
             }
         });
