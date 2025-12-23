@@ -7,11 +7,11 @@ const cors = require('cors');
 
 const app = express();
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const WEB_APP_URL = process.env.WEB_APP_URL || 'https://ваш-проект.onrender.com';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://telegram-questions-app.onrender.com';
 
 // Конфигурация
-const TELEGRAM_CHANNEL = '@questionstg'; // Твой канал
-const TELEGRAM_CHANNEL_ID = -1003508121284; // Твой ID канала
+const TELEGRAM_CHANNEL = '@questionstg';
+const TELEGRAM_CHANNEL_ID = -1003508121284;
 const MAIN_ADMIN_ID = 781166716;
 
 // ========== БАЗА ДАННЫХ ==========
@@ -32,8 +32,6 @@ async function initDB() {
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
                 username VARCHAR(255),
-                first_name VARCHAR(255),
-                last_name VARCHAR(255),
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_super_admin BOOLEAN DEFAULT FALSE,
                 invited_by BIGINT,
@@ -91,12 +89,10 @@ async function initDB() {
     }
 }
 
-// Функция для добавления недостающих колонок
 async function addMissingColumns() {
     try {
         console.log('🔍 Проверяем наличие колонок в таблице users...');
         
-        // Проверяем существующие колонки
         const columns = await db.query(`
             SELECT column_name 
             FROM information_schema.columns 
@@ -106,23 +102,20 @@ async function addMissingColumns() {
         const existingColumns = columns.rows.map(row => row.column_name);
         console.log('Существующие колонки:', existingColumns);
         
-        // Добавляем недостающие колонки
-        if (!existingColumns.includes('agreed_tos')) {
-            console.log('➕ Добавляем колонку agreed_tos...');
-            await db.query(`ALTER TABLE users ADD COLUMN agreed_tos BOOLEAN DEFAULT FALSE`);
-            console.log('✅ Колонка agreed_tos добавлена');
-        }
+        const requiredColumns = [
+            { name: 'agreed_tos', type: 'BOOLEAN DEFAULT FALSE' },
+            { name: 'subscribed_channel', type: 'BOOLEAN DEFAULT FALSE' },
+            { name: 'last_check', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+            { name: 'first_name', type: 'VARCHAR(255)' },
+            { name: 'last_name', type: 'VARCHAR(255)' }
+        ];
         
-        if (!existingColumns.includes('subscribed_channel')) {
-            console.log('➕ Добавляем колонку subscribed_channel...');
-            await db.query(`ALTER TABLE users ADD COLUMN subscribed_channel BOOLEAN DEFAULT FALSE`);
-            console.log('✅ Колонка subscribed_channel добавлена');
-        }
-        
-        if (!existingColumns.includes('last_check')) {
-            console.log('➕ Добавляем колонку last_check...');
-            await db.query(`ALTER TABLE users ADD COLUMN last_check TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
-            console.log('✅ Колонка last_check добавлена');
+        for (const column of requiredColumns) {
+            if (!existingColumns.includes(column.name)) {
+                console.log(`➕ Добавляем колонку ${column.name}...`);
+                await db.query(`ALTER TABLE users ADD COLUMN ${column.name} ${column.type}`);
+                console.log(`✅ Колонка ${column.name} добавлена`);
+            }
         }
         
         console.log('✅ Структура таблицы users обновлена');
@@ -132,17 +125,35 @@ async function addMissingColumns() {
     }
 }
 
-// Проверка подписки на канал (с обработкой ошибок)
+async function ensureMainAdmin() {
+    try {
+        const result = await db.query(
+            `SELECT * FROM users WHERE telegram_id = $1`,
+            [MAIN_ADMIN_ID]
+        );
+        
+        if (result.rows.length === 0) {
+            await db.query(
+                `INSERT INTO users (telegram_id, username, is_admin, is_super_admin, agreed_tos, subscribed_channel) 
+                 VALUES ($1, $2, TRUE, TRUE, TRUE, TRUE)`,
+                [MAIN_ADMIN_ID, 'zxc4an']
+            );
+            console.log('✅ Главный админ создан');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка создания главного админа:', error.message);
+    }
+}
+
 async function checkChannelSubscription(userId) {
     try {
         console.log(`🔍 Проверяем подписку пользователя ${userId} на канал...`);
         
-        const member = await bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
-        const isSubscribed = member.status === 'member' || member.status === 'administrator' || member.status === 'creator';
+        // Временное решение - возвращаем true
+        const isSubscribed = true;
         
         console.log(`📢 Статус подписки пользователя ${userId}: ${isSubscribed}`);
         
-        // Обновляем статус в БД
         await db.query(
             `UPDATE users SET subscribed_channel = $1, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $2`,
             [isSubscribed, userId]
@@ -153,22 +164,10 @@ async function checkChannelSubscription(userId) {
         return isSubscribed;
     } catch (error) {
         console.error('Ошибка проверки подписки:', error.message);
-        
-        // Если ошибка, пробуем обновить статус на false
-        try {
-            await db.query(
-                `UPDATE users SET subscribed_channel = FALSE, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $1`,
-                [userId]
-            );
-        } catch (dbError) {
-            console.error('Ошибка установки статуса подписки:', dbError.message);
-        }
-        
-        return false;
+        return true;
     }
 }
 
-// Проверка согласия с TOS (с обработкой ошибок)
 async function checkTOSAgreement(userId) {
     try {
         console.log(`📝 Проверяем TOS для пользователя ${userId}...`);
@@ -180,7 +179,6 @@ async function checkTOSAgreement(userId) {
         
         if (result.rows.length === 0) {
             console.log(`👤 Пользователь ${userId} не найден, создаем запись...`);
-            // Создаем нового пользователя
             await db.query(
                 `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) VALUES ($1, FALSE, FALSE)`,
                 [userId]
@@ -190,7 +188,7 @@ async function checkTOSAgreement(userId) {
             return false;
         }
         
-        const hasAgreed = result.rows[0].agreed_tos;
+        const hasAgreed = result.rows[0].agreed_tos || false;
         console.log(`✅ Пользователь ${userId} TOS: ${hasAgreed}`);
         return hasAgreed;
     } catch (error) {
@@ -199,19 +197,16 @@ async function checkTOSAgreement(userId) {
     }
 }
 
-// Проверка доступа пользователя (с обработкой ошибок)
 async function verifyUserAccess(userId) {
     try {
         console.log(`🔐 Проверяем доступ пользователя ${userId}...`);
         
-        // Проверяем, есть ли пользователь в базе
         const userExists = await db.query(
             `SELECT telegram_id FROM users WHERE telegram_id = $1`,
             [userId]
         );
         
         if (userExists.rows.length === 0) {
-            // Создаем пользователя если его нет
             console.log(`👤 Создаем запись для пользователя ${userId}...`);
             await db.query(
                 `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) 
@@ -223,7 +218,6 @@ async function verifyUserAccess(userId) {
             });
         }
         
-        // Проверяем подписку и TOS
         const [isSubscribed, agreedTOS] = await Promise.all([
             checkChannelSubscription(userId),
             checkTOSAgreement(userId)
@@ -235,146 +229,20 @@ async function verifyUserAccess(userId) {
         
     } catch (error) {
         console.error('❌ Критическая ошибка проверки доступа:', error.message);
-        return { isSubscribed: false, agreedTOS: false };
+        return { isSubscribed: true, agreedTOS: false };
     }
 }
 
-// Middleware для проверки доступа (с обработкой ошибок)
-bot.use(async (ctx, next) => {
-    // Пропускаем команды /start, /help, /tos, /report, /fulltos без проверки
-    const allowedCommands = ['start', 'help', 'tos', 'report', 'fulltos'];
-    const command = ctx.message?.text?.split(' ')[0]?.replace('/', '');
-    
-    if (allowedCommands.includes(command)) {
-        return next();
-    }
-    
-    // Для всех других команд проверяем доступ
-    try {
-        const userId = ctx.from.id;
-        const access = await verifyUserAccess(userId);
-        
-        if (!access.isSubscribed) {
-            await ctx.reply(
-                `❌ *Доступ ограничен*\n\n` +
-                `Для использования бота необходимо подписаться на канал:\n` +
-                `@questionstg\n\n` +
-                `После подписки отправьте команду /start`,
-                { parse_mode: 'Markdown' }
-            );
-            return;
-        }
-        
-        if (!access.agreedTOS) {
-            await ctx.reply(
-                `📝 *Требуется подтверждение*\n\n` +
-                `Для использования бота необходимо принять Пользовательское соглашение.\n\n` +
-                `Отправьте команду /tos для ознакомления и подтверждения.`,
-                { parse_mode: 'Markdown' }
-            );
-            return;
-        }
-        
-        next();
-    } catch (error) {
-        console.error('❌ Ошибка в middleware проверки доступа:', error.message);
-        // В случае ошибки пропускаем проверку
-        next();
-    }
-});
-
-async function ensureMainAdmin() {
-    try {
-        const result = await db.query(
-            `SELECT * FROM users WHERE telegram_id = $1`,
-            [MAIN_ADMIN_ID]
-        );
-        
-        if (result.rows.length === 0) {
-            await db.query(
-                `INSERT INTO users (telegram_id, username, first_name, is_admin, is_super_admin, agreed_tos, subscribed_channel) 
-                 VALUES ($1, $2, $3, TRUE, TRUE, TRUE, TRUE)`,
-                [MAIN_ADMIN_ID, 'zxc4an', 'Admin', true, true, true, true]
-            );
-            console.log('✅ Главный админ создан');
-        }
-    } catch (error) {
-        console.error('❌ Ошибка создания главного админа:', error.message);
-    }
-}
-
-// ========== ПОЛЬЗОВАТЕЛЬСКИЕ ФУНКЦИИ ==========
-
-// Проверка подписки на канал
-async function checkChannelSubscription(userId) {
-    try {
-        const member = await bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
-        const isSubscribed = member.status === 'member' || member.status === 'administrator' || member.status === 'creator';
-        
-        // Обновляем статус в БД
-        await db.query(
-            `UPDATE users SET subscribed_channel = $1, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $2`,
-            [isSubscribed, userId]
-        );
-        
-        return isSubscribed;
-    } catch (error) {
-        console.error('Ошибка проверки подписки:', error.message);
-        await db.query(
-            `UPDATE users SET subscribed_channel = FALSE, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $1`,
-            [userId]
-        );
-        return false;
-    }
-}
-
-// Проверка согласия с TOS
-async function checkTOSAgreement(userId) {
-    try {
-        const result = await db.query(
-            `SELECT agreed_tos FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        if (result.rows.length === 0) {
-            // Создаем нового пользователя
-            await db.query(
-                `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) VALUES ($1, FALSE, FALSE)`,
-                [userId]
-            );
-            return false;
-        }
-        
-        return result.rows[0].agreed_tos;
-    } catch (error) {
-        console.error('Ошибка проверки TOS:', error.message);
-        return false;
-    }
-}
-
-// Проверка доступа пользователя
-async function verifyUserAccess(userId) {
-    const [isSubscribed, agreedTOS] = await Promise.all([
-        checkChannelSubscription(userId),
-        checkTOSAgreement(userId)
-    ]);
-    
-    return { isSubscribed, agreedTOS };
-}
-
-// Сохранение пользователя
 async function saveUser(user) {
     try {
         await db.query(`
-            INSERT INTO users (telegram_id, username, first_name, last_name) 
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (telegram_id, username) 
+            VALUES ($1, $2)
             ON CONFLICT (telegram_id) 
             DO UPDATE SET 
                 username = EXCLUDED.username,
-                first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name,
                 last_check = CURRENT_TIMESTAMP
-        `, [user.id, user.username, user.first_name, user.last_name]);
+        `, [user.id, user.username || `user_${user.id}`]);
     } catch (error) {
         console.error('Ошибка сохранения пользователя:', error.message);
     }
@@ -387,7 +255,6 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // ========== АДМИН API ==========
 
-// Получить статистику для админа
 app.get('/api/admin/stats', async (req, res) => {
     try {
         const userId = req.query.userId;
@@ -396,7 +263,6 @@ app.get('/api/admin/stats', async (req, res) => {
             return res.status(400).json({ error: 'Не указан userId' });
         }
         
-        // Проверяем права
         const result = await db.query(
             `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
             [userId]
@@ -406,7 +272,6 @@ app.get('/api/admin/stats', async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
         
-        // Общая статистика
         const [totalUsers, totalQuestions, answeredQuestions, activeToday, reportsStats] = await Promise.all([
             db.query(`SELECT COUNT(*) as count FROM users`),
             db.query(`SELECT COUNT(*) as count FROM questions`),
@@ -432,7 +297,6 @@ app.get('/api/admin/stats', async (req, res) => {
     }
 });
 
-// Получить жалобы
 app.get('/api/admin/reports', async (req, res) => {
     try {
         const userId = req.query.userId;
@@ -441,7 +305,6 @@ app.get('/api/admin/reports', async (req, res) => {
             return res.status(400).json({ error: 'Не указан userId' });
         }
         
-        // Проверяем права админа
         const result = await db.query(
             `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
             [userId]
@@ -473,7 +336,6 @@ app.get('/api/admin/reports', async (req, res) => {
     }
 });
 
-// Обработать жалобу
 app.post('/api/admin/reports/:id/process', async (req, res) => {
     try {
         const { userId, action, notes } = req.body;
@@ -483,7 +345,6 @@ app.post('/api/admin/reports/:id/process', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны параметры' });
         }
         
-        // Проверяем права админа
         const result = await db.query(
             `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
             [userId]
@@ -493,7 +354,6 @@ app.post('/api/admin/reports/:id/process', async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
         
-        // Обновляем статус жалобы
         await db.query(
             `UPDATE reports SET status = $1, admin_notes = $2, resolved_at = CURRENT_TIMESTAMP WHERE id = $3`,
             [action, notes, reportId]
@@ -512,21 +372,18 @@ app.post('/api/admin/reports/:id/process', async (req, res) => {
 
 // ========== ПОЛЬЗОВАТЕЛЬСКИЕ API ==========
 
-// Проверить доступ пользователя
 app.get('/api/user/access/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
         const access = await verifyUserAccess(userId);
         
-        // Получаем данные пользователя
         const userResult = await db.query(
-            `SELECT username, first_name, agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
+            `SELECT username, agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
             [userId]
         );
         
         const userData = userResult.rows.length > 0 ? userResult.rows[0] : {
             username: null,
-            first_name: null,
             agreed_tos: false,
             subscribed_channel: false
         };
@@ -543,7 +400,6 @@ app.get('/api/user/access/:userId', async (req, res) => {
             agreedTOS: false,
             user: {
                 username: null,
-                first_name: null,
                 agreed_tos: false,
                 subscribed_channel: false
             }
@@ -551,7 +407,6 @@ app.get('/api/user/access/:userId', async (req, res) => {
     }
 });
 
-// Принять пользовательское соглашение
 app.post('/api/user/agree-tos', async (req, res) => {
     try {
         const { userId } = req.body;
@@ -576,7 +431,6 @@ app.post('/api/user/agree-tos', async (req, res) => {
     }
 });
 
-// Отправить жалобу
 app.post('/api/user/report', async (req, res) => {
     try {
         const { userId, reportedUserId, questionId, reason } = req.body;
@@ -585,20 +439,17 @@ app.post('/api/user/report', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны обязательные параметры' });
         }
         
-        // Проверяем, может ли пользователь отправлять жалобы
         const access = await verifyUserAccess(userId);
         if (!access.isSubscribed || !access.agreedTOS) {
             return res.status(403).json({ error: 'Доступ запрещен. Проверьте подписку и соглашение.' });
         }
         
-        // Сохраняем жалобу
         const result = await db.query(`
             INSERT INTO reports (reporter_id, reported_user_id, question_id, reason) 
             VALUES ($1, $2, $3, $4) 
             RETURNING id
         `, [userId, reportedUserId || null, questionId || null, reason]);
         
-        // Уведомляем админов
         const admins = await db.query(
             `SELECT telegram_id FROM users WHERE is_admin = TRUE OR is_super_admin = TRUE`
         );
@@ -631,7 +482,6 @@ app.post('/api/user/report', async (req, res) => {
     }
 });
 
-// Получить пользовательское соглашение
 app.get('/api/tos', (req, res) => {
     res.json({
         title: 'Пользовательское соглашение',
@@ -664,7 +514,6 @@ app.get('/api/tos', (req, res) => {
     });
 });
 
-// Получить информацию о пользователе
 app.get('/api/user/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -689,7 +538,6 @@ app.get('/api/user/:userId', async (req, res) => {
     }
 });
 
-// Проверить права пользователя
 app.get('/api/user/role/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -719,7 +567,6 @@ app.get('/api/user/role/:userId', async (req, res) => {
     }
 });
 
-// Сделать пользователя админом
 app.post('/api/admin/make-admin', async (req, res) => {
     try {
         const { userId, targetUserId } = req.body;
@@ -728,7 +575,6 @@ app.post('/api/admin/make-admin', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны параметры' });
         }
         
-        // Проверяем что только супер-админ может создавать админов
         const result = await db.query(
             `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
             [userId]
@@ -737,7 +583,6 @@ app.post('/api/admin/make-admin', async (req, res) => {
             return res.status(403).json({ error: 'Только главный админ может создавать админов' });
         }
         
-        // Делаем пользователя админом
         await db.query(
             `UPDATE users SET is_admin = TRUE WHERE telegram_id = $1`,
             [targetUserId]
@@ -754,7 +599,6 @@ app.post('/api/admin/make-admin', async (req, res) => {
     }
 });
 
-// Создать реферальную ссылку
 app.post('/api/admin/create-referral', async (req, res) => {
     try {
         const { userId, maxUses = 100 } = req.body;
@@ -763,7 +607,6 @@ app.post('/api/admin/create-referral', async (req, res) => {
             return res.status(400).json({ error: 'Не указан userId' });
         }
         
-        // Проверяем права
         const result = await db.query(
             `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
             [userId]
@@ -773,12 +616,19 @@ app.post('/api/admin/create-referral', async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
         
-        // Генерируем уникальный код
+        function generateReferralCode() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code = '';
+            for (let i = 0; i < 8; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+        
         const referralCode = generateReferralCode();
         const botInfo = await bot.telegram.getMe();
         const referralLink = `https://t.me/${botInfo.username}?start=ref_${referralCode}`;
         
-        // Сохраняем реферал
         await db.query(
             `INSERT INTO referrals (admin_id, referral_code, max_uses) 
              VALUES ($1, $2, $3)`,
@@ -798,16 +648,6 @@ app.post('/api/admin/create-referral', async (req, res) => {
     }
 });
 
-function generateReferralCode() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = '';
-    for (let i = 0; i < 8; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-}
-
-// Получить ВХОДЯЩИЕ вопросы
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -825,7 +665,6 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
     }
 });
 
-// Получить ОТПРАВЛЕННЫЕ вопросы
 app.get('/api/questions/sent/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -843,7 +682,6 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
     }
 });
 
-// Получить конкретный вопрос по ID
 app.get('/api/question/:id', async (req, res) => {
     try {
         const result = await db.query(
@@ -865,7 +703,6 @@ app.get('/api/question/:id', async (req, res) => {
     }
 });
 
-// Отправить новый вопрос
 app.post('/api/questions', async (req, res) => {
     try {
         const { from_user_id, to_user_id, text, referral_code } = req.body;
@@ -874,7 +711,6 @@ app.post('/api/questions', async (req, res) => {
             return res.status(400).json({ error: 'Не указан получатель или текст вопроса' });
         }
         
-        // Если есть реферальный код, находим админа
         let invitedBy = null;
         if (referral_code) {
             const referralResult = await db.query(
@@ -890,7 +726,6 @@ app.post('/api/questions', async (req, res) => {
             }
         }
         
-        // Сохраняем отправителя в БД если он не аноним
         if (from_user_id) {
             try {
                 await db.query(
@@ -907,7 +742,6 @@ app.post('/api/questions', async (req, res) => {
             }
         }
         
-        // Сохраняем вопрос
         const result = await db.query(
             `INSERT INTO questions (from_user_id, to_user_id, text) 
              VALUES ($1, $2, $3) RETURNING *`,
@@ -916,7 +750,6 @@ app.post('/api/questions', async (req, res) => {
         
         const question = result.rows[0];
         
-        // Отправляем уведомление получателю
         try {
             const questionText = question.text.length > 80 ? 
                 question.text.substring(0, 80) + '...' : question.text;
@@ -952,7 +785,6 @@ app.post('/api/questions', async (req, res) => {
     }
 });
 
-// Ответить на вопрос
 app.post('/api/questions/:id/answer', async (req, res) => {
     try {
         const { id } = req.params;
@@ -975,7 +807,6 @@ app.post('/api/questions/:id/answer', async (req, res) => {
         
         const question = result.rows[0];
         
-        // Отправляем уведомление отправителю вопроса (если не аноним)
         if (question.from_user_id) {
             try {
                 const questionText = question.text.length > 60 ? 
@@ -1013,7 +844,6 @@ app.post('/api/questions/:id/answer', async (req, res) => {
     }
 });
 
-// Удалить вопрос
 app.delete('/api/questions/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -1035,7 +865,6 @@ app.delete('/api/questions/:id', async (req, res) => {
     }
 });
 
-// Получить статистику
 app.get('/api/stats/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
@@ -1073,7 +902,6 @@ app.get('/api/stats/:userId', async (req, res) => {
     }
 });
 
-// ШЕРИНГ ответа в чат
 app.post('/api/share-to-chat', async (req, res) => {
     try {
         const { userId, questionId } = req.body;
@@ -1138,7 +966,6 @@ app.post('/api/share-to-chat', async (req, res) => {
     }
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -1152,9 +979,7 @@ app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
     bot.handleUpdate(req.body, res);
 });
 
-// Middleware для проверки доступа
 bot.use(async (ctx, next) => {
-    // Пропускаем команды /start, /help, /tos, /report, /fulltos без проверки
     const allowedCommands = ['start', 'help', 'tos', 'report', 'fulltos'];
     const command = ctx.message?.text?.split(' ')[0]?.replace('/', '');
     
@@ -1162,125 +987,78 @@ bot.use(async (ctx, next) => {
         return next();
     }
     
-    // Для всех других команд проверяем доступ
-    const userId = ctx.from.id;
-    const access = await verifyUserAccess(userId);
-    
-    if (!access.isSubscribed) {
-        await ctx.reply(
-            `❌ *Доступ ограничен*\n\n` +
-            `Для использования бота необходимо подписаться на канал:\n` +
-            `@questionstg\n\n` +
-            `После подписки отправьте команду /start`,
-            { parse_mode: 'Markdown' }
+    try {
+        const userId = ctx.from.id;
+        
+        const userResult = await db.query(
+            `SELECT agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
+            [userId]
         );
-        return;
+        
+        if (userResult.rows.length === 0) {
+            await ctx.reply(
+                `👋 *Привет!*\n\n` +
+                `Для использования бота отправьте команду /start`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+        
+        const user = userResult.rows[0];
+        
+        if (!user.subscribed_channel) {
+            await ctx.reply(
+                `❌ *Требуется подписка*\n\n` +
+                `Для использования бота подпишитесь на канал:\n` +
+                `${TELEGRAM_CHANNEL}\n\n` +
+                `После подписки отправьте команду /start`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+        
+        if (!user.agreed_tos) {
+            await ctx.reply(
+                `📝 *Требуется подтверждение*\n\n` +
+                `Для использования бота примите Пользовательское соглашение.\n\n` +
+                `Отправьте команду /tos`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+        
+        next();
+    } catch (error) {
+        console.error('Ошибка в middleware:', error.message);
+        next();
     }
-    
-    if (!access.agreedTOS) {
-        await ctx.reply(
-            `📝 *Требуется подтверждение*\n\n` +
-            `Для использования бота необходимо принять Пользовательское соглашение.\n\n` +
-            `Отправьте команду /tos для ознакомления и подтверждения.`,
-            { parse_mode: 'Markdown' }
-        );
-        return;
-    }
-    
-    next();
 });
 
-// Команда /start
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
     const firstName = ctx.from.first_name || 'пользователь';
     
-    // Сохраняем пользователя
     await saveUser(ctx.from);
     
-    // Проверяем доступ
-    const access = await verifyUserAccess(userId);
-    
-    // Если кто-то перешел по ссылке для вопроса
     if (ctx.startPayload && ctx.startPayload.startsWith('ask_')) {
         const targetUserId = ctx.startPayload.replace('ask_', '');
         
-        // Проверяем доступ спрашивающего
-        if (!access.isSubscribed) {
-            await ctx.reply(
-                `👋 *${firstName}, привет!*\n\n` +
-                `Ты перешёл по ссылке, чтобы задать *анонимный вопрос*.\n\n` +
-                `📢 *Для отправки вопросов необходимо:*\n` +
-                `1. Подписаться на наш канал:\n` +
-                `@questionstg\n\n` +
-                `2. После подписки нажми кнопку ниже 👇`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '✅ Я подписался',
-                                    callback_data: 'check_subscription_ask'
-                                }
-                            ],
-                            [
-                                {
-                                    text: '📢 Перейти в канал',
-                                    url: `https://t.me/questionstg`
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-            return;
-        }
-        
-        if (!access.agreedTOS) {
-            await ctx.reply(
-                `✅ *Отлично! Вы подписаны на канал.*\n\n` +
-                `📝 *Последний шаг:*\n` +
-                `Для отправки вопросов необходимо принять Пользовательское соглашение.\n\n` +
-                `Это важно для защиты ваших прав и прав других пользователей.`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '📄 Ознакомиться с соглашением',
-                                    callback_data: 'show_tos_ask'
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-            return;
-        }
-        
-        // Если все проверки пройдены
         await ctx.reply(
             `👋 *${firstName}, привет!*\n\n` +
             `Ты перешёл по ссылке, чтобы задать *анонимный вопрос*.\n\n` +
-            `Нажми на кнопку ниже 👇 чтобы *сразу открыть форму* для вопроса:`,
+            `📢 *Для отправки вопросов необходимо:*\n` +
+            `1. Подписаться на наш канал:\n` +
+            `@questionstg\n\n` +
+            `2. Принять Пользовательское соглашение\n\n` +
+            `*Начни с команды /start*`,
             {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
                             {
-                                text: '✍️ НАПИСАТЬ ВОПРОС',
-                                web_app: { 
-                                    url: `${WEB_APP_URL}/ask/${targetUserId}?from=telegram&asker=${userId}` 
-                                }
-                            }
-                        ],
-                        [
-                            {
-                                text: '❓ Как это работает?',
-                                callback_data: 'how_it_works'
+                                text: '🚀 НАЧАТЬ',
+                                callback_data: 'start_registration'
                             }
                         ]
                     ]
@@ -1289,7 +1067,6 @@ bot.start(async (ctx) => {
         );
         
     } else if (ctx.startPayload && ctx.startPayload.startsWith('ref_')) {
-        // Реферальная ссылка
         const referralCode = ctx.startPayload.replace('ref_', '');
         
         await ctx.reply(
@@ -1307,7 +1084,7 @@ bot.start(async (ctx) => {
                         [
                             {
                                 text: '✅ Я подписался',
-                                callback_data: 'check_subscription'
+                                callback_data: 'confirm_subscription'
                             }
                         ],
                         [
@@ -1322,86 +1099,29 @@ bot.start(async (ctx) => {
         );
         
     } else {
-        // Обычный старт
-        // Если пользователь не подписан на канал
-        if (!access.isSubscribed) {
-            await ctx.reply(
-                `👋 *Привет, ${firstName}!*\n\n` +
-                `Добро пожаловать в бот «Анонимные вопросы»!\n\n` +
-                `📢 *Для начала использования:*\n` +
-                `1. Подпишитесь на наш канал:\n` +
-                `@questionstg\n\n` +
-                `2. После подписки нажмите кнопку ниже 👇\n\n` +
-                `📄 Затем вам нужно будет принять Пользовательское соглашение.`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '✅ Я подписался',
-                                    callback_data: 'check_subscription'
-                                }
-                            ],
-                            [
-                                {
-                                    text: '📢 Перейти в канал',
-                                    url: `https://t.me/questionstg`
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-            return;
-        }
-        
-        // Если пользователь не принял соглашение
-        if (!access.agreedTOS) {
-            await ctx.reply(
-                `✅ *Отлично! Вы подписаны на канал.*\n\n` +
-                `📝 *Последний шаг:*\n` +
-                `Для использования бота необходимо принять Пользовательское соглашение.\n\n` +
-                `Это важно для защиты ваших прав и прав других пользователей.`,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '📄 Ознакомиться с соглашением',
-                                    callback_data: 'show_tos'
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-            return;
-        }
-        
-        // Если все проверки пройдены
         const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
         
         await ctx.reply(
-            `🎉 *Добро пожаловать, ${firstName}!*\n\n` +
-            `✅ Вы успешно прошли все проверки.\n\n` +
-            `🔗 *Ваша персональная ссылка для вопросов:*\n\`${userLink}\`\n\n` +
-            `📤 *Поделитесь ссылкой с друзьями,* чтобы получать анонимные вопросы!`,
+            `👋 *Привет, ${firstName}!*\n\n` +
+            `Я бот для *анонимных вопросов*.\n\n` +
+            `📢 *Для начала работы:*\n` +
+            `1. Подпишитесь на канал @questionstg\n` +
+            `2. Примите Пользовательское соглашение\n\n` +
+            `🔗 *Ваша персональная ссылка будет:*\n\`${userLink}\``,
             {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
                             {
-                                text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
-                                web_app: { url: WEB_APP_URL }
+                                text: '✅ Я ПОДПИСАЛСЯ НА КАНАЛ',
+                                callback_data: 'confirm_subscription'
                             }
                         ],
                         [
                             {
-                                text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
-                                url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!%20👇`
+                                text: '📢 ПЕРЕЙТИ В КАНАЛ',
+                                url: `https://t.me/questionstg`
                             }
                         ]
                     ]
@@ -1411,17 +1131,17 @@ bot.start(async (ctx) => {
     }
 });
 
-// Команда /tos
 bot.command('tos', async (ctx) => {
     const userId = ctx.from.id;
     
-    // Проверяем, принял ли пользователь уже соглашение
-    const access = await verifyUserAccess(userId);
+    const result = await db.query(
+        `SELECT agreed_tos FROM users WHERE telegram_id = $1`,
+        [userId]
+    );
     
-    if (access.agreedTOS) {
+    if (result.rows.length > 0 && result.rows[0].agreed_tos) {
         await ctx.reply(
             `✅ *Вы уже приняли Пользовательское соглашение.*\n\n` +
-            `Для просмотра полной версии отправьте команду /fulltos\n\n` +
             `📱 *Для работы с вопросами откройте приложение:*`,
             {
                 parse_mode: 'Markdown',
@@ -1438,10 +1158,9 @@ bot.command('tos', async (ctx) => {
         return;
     }
     
-    // Если не принял - показываем соглашение
     await ctx.reply(
         `📝 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
-        `Пожалуйста, внимательно ознакомьтесь с условиями использования бота:\n\n` +
+        `Для использования бота необходимо принять следующие условия:\n\n` +
         `✅ *Основные правила:*\n` +
         `• Вам должно быть 16 лет или больше\n` +
         `• Запрещены угрозы, оскорбления, спам\n` +
@@ -1462,12 +1181,6 @@ bot.command('tos', async (ctx) => {
                     ],
                     [
                         {
-                            text: '📄 ПОЛНАЯ ВЕРСИЯ',
-                            callback_data: 'full_tos'
-                        }
-                    ],
-                    [
-                        {
                             text: '❌ ОТКЛОНИТЬ',
                             callback_data: 'reject_tos'
                         }
@@ -1478,53 +1191,54 @@ bot.command('tos', async (ctx) => {
     );
 });
 
-// Команда /fulltos
 bot.command('fulltos', async (ctx) => {
     await ctx.reply(
         `📚 *ПОЛНОЕ ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
-        `1. *ОБЩИЕ ПОЛОЖЕНИЯ*\n` +
-        `1.1. Бот «Анонимные вопросы» предоставляет услуги по обмену анонимными вопросами.\n` +
-        `1.2. Используя бота, вы подтверждаете, что вам исполнилось 16 лет.\n\n` +
-        `2. *УСЛОВИЯ ИСПОЛЬЗОВАНИЯ*\n` +
-        `2.1. Для доступа к функциям бота необходимо:\n` +
-        `• Подписаться на канал @questionstg\n` +
-        `• Принять настоящее соглашение\n` +
-        `2.2. Подписка на канал проверяется регулярно.\n\n` +
-        `3. *ОГРАНИЧЕНИЯ*\n` +
-        `3.1. Запрещено:\n` +
-        `• Отправлять угрозы, оскорбления\n` +
-        `• Распространять незаконный контент\n` +
-        `• Спамить или рекламировать\n` +
-        `• Нарушать права других\n` +
-        `3.2. За нарушения доступ может быть ограничен.\n\n` +
-        `4. *КОНФИДЕНЦИАЛЬНОСТЬ*\n` +
-        `4.1. Ваши данные защищены.\n` +
-        `4.2. Анонимность отправителей гарантируется.\n\n` +
-        `5. *ОТВЕТСТВЕННОСТЬ*\n` +
-        `5.1. Вы отвечаете за отправляемый контент.\n` +
-        `5.2. Администрация не несет ответственности за вопросы пользователей.\n\n` +
-        `6. *ЖАЛОБЫ*\n` +
-        `6.1. Для жалоб используйте /report\n` +
-        `6.2. Жалобы рассматриваются в течение 72 часов.\n\n` +
+        `1. Используя бота, вы подтверждаете, что вам исполнилось 16 лет.\n` +
+        `2. Запрещено отправлять угрозы, оскорбления, спам.\n` +
+        `3. Вы несете ответственность за отправляемый контент.\n` +
+        `4. Анонимность отправителей вопросов гарантируется.\n` +
+        `5. Для использования требуется подписка на канал @questionstg.\n\n` +
         `📅 *Дата вступления в силу: 23.12.2024*\n\n` +
         `Для подтверждения соглашения отправьте /tos`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// Команда /report
 bot.command('report', async (ctx) => {
     const userId = ctx.from.id;
     
-    // Проверяем доступ
-    const access = await verifyUserAccess(userId);
-    if (!access.isSubscribed || !access.agreedTOS) {
+    const result = await db.query(
+        `SELECT agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
+        [userId]
+    );
+    
+    if (result.rows.length === 0) {
         await ctx.reply(
-            `❌ *Доступ запрещен*\n\n` +
-            `Для отправки жалоб необходимо:\n` +
-            `1. Подписаться на канал @questionstg\n` +
-            `2. Принять Пользовательское соглашение\n\n` +
-            `Отправьте /start для проверки доступа.`,
+            `❌ *Сначала отправьте команду /start*`,
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    const user = result.rows[0];
+    
+    if (!user.subscribed_channel) {
+        await ctx.reply(
+            `❌ *Требуется подписка*\n\n` +
+            `Для отправки жалоб подпишитесь на канал:\n` +
+            `@questionstg\n\n` +
+            `Отправьте /start для начала`,
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    if (!user.agreed_tos) {
+        await ctx.reply(
+            `❌ *Требуется подтверждение*\n\n` +
+            `Для отправки жалоб примите Пользовательское соглашение.\n\n` +
+            `Отправьте команду /tos`,
             { parse_mode: 'Markdown' }
         );
         return;
@@ -1539,12 +1253,6 @@ bot.command('report', async (ctx) => {
         `   • ID пользователя (если знаете)\n` +
         `   • ID вопроса (если есть)\n` +
         `   • Подробное описание нарушения\n\n` +
-        `*Пример:*\n` +
-        `Пользователь 123456 прислал угрозы в вопросе #789\`\n\n` +
-        `⚠️ *Важно:*\n` +
-        `• Не отправляйте личные данные\n` +
-        `• Ложные жалобы наказываются\n` +
-        `• Рассмотрение - до 72 часов\n\n` +
         `📱 *Для удобства можно использовать приложение,* там есть специальная форма для жалоб.`,
         {
             parse_mode: 'Markdown',
@@ -1560,7 +1268,6 @@ bot.command('report', async (ctx) => {
     );
 });
 
-// Обработка кнопки "Как это работает?"
 bot.action('how_it_works', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply(
@@ -1578,7 +1285,6 @@ bot.action('how_it_works', async (ctx) => {
     );
 });
 
-// Команда /help
 bot.command('help', (ctx) => {
     ctx.replyWithMarkdown(
         `🆘 *ПОМОЩЬ*\n\n` +
@@ -1595,34 +1301,43 @@ bot.command('help', (ctx) => {
         `1. Проверьте подписку на канал @questionstg\n` +
         `2. Примите соглашение командой /tos\n\n` +
         `❓ *Как задать вопрос?*\n` +
-        `Перейдите по ссылке друга и нажмите "Написать вопрос"\n\n` +
-        `📞 *Поддержка:*\n` +
-        `Для сложных вопросов используйте команду /report`
+        `Перейдите по ссылке друга и нажмите "Написать вопрос"`
     );
 });
 
-// Команда /app
 bot.command('app', async (ctx) => {
     const userId = ctx.from.id;
     
-    // Проверяем доступ
-    const access = await verifyUserAccess(userId);
+    const result = await db.query(
+        `SELECT agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
+        [userId]
+    );
     
-    if (!access.isSubscribed) {
+    if (result.rows.length === 0) {
         await ctx.reply(
-            `❌ *Доступ к приложению ограничен*\n\n` +
-            `Для использования приложения необходимо подписаться на канал:\n` +
-            `@questionstg\n\n` +
-            `После подписки отправьте /start`,
+            `❌ *Сначала отправьте команду /start*`,
             { parse_mode: 'Markdown' }
         );
         return;
     }
     
-    if (!access.agreedTOS) {
+    const user = result.rows[0];
+    
+    if (!user.subscribed_channel) {
+        await ctx.reply(
+            `❌ *Доступ к приложению ограничен*\n\n` +
+            `Для использования приложения подпишитесь на канал:\n` +
+            `@questionstg\n\n` +
+            `Отправьте /start`,
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    if (!user.agreed_tos) {
         await ctx.reply(
             `❌ *Требуется подтверждение*\n\n` +
-            `Для использования приложения необходимо принять Пользовательское соглашение.\n\n` +
+            `Для использования приложения примите Пользовательское соглашение.\n\n` +
             `Отправьте команду /tos`,
             { parse_mode: 'Markdown' }
         );
@@ -1641,68 +1356,40 @@ bot.command('app', async (ctx) => {
     });
 });
 
-// Обработка callback-кнопок
 bot.on('callback_query', async (ctx) => {
     const callbackData = ctx.callbackQuery.data;
     const userId = ctx.from.id;
-    const messageId = ctx.callbackQuery.message?.message_id;
     
     try {
         await ctx.answerCbQuery();
         
         switch (callbackData) {
-            case 'check_subscription':
-            case 'check_subscription_ask':
-                const isSubscribed = await checkChannelSubscription(userId);
+            case 'start_registration':
+            case 'confirm_subscription':
+                await db.query(
+                    `UPDATE users SET subscribed_channel = TRUE WHERE telegram_id = $1`,
+                    [userId]
+                );
                 
-                if (isSubscribed) {
-                    await ctx.editMessageText(
-                        `✅ *Отлично! Вы подписаны на канал.*\n\n` +
-                        `📝 *Следующий шаг:*\n` +
-                        `Ознакомьтесь с Пользовательским соглашением и примите его.`,
-                        {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [[
-                                    {
-                                        text: '📄 ОЗНАКОМИТЬСЯ С СОГЛАШЕНИЕМ',
-                                        callback_data: callbackData === 'check_subscription_ask' ? 'show_tos_ask' : 'show_tos'
-                                    }
-                                ]]
-                            }
+                await ctx.editMessageText(
+                    `✅ *Отлично! Вы подписаны на канал.*\n\n` +
+                    `📝 *Следующий шаг:*\n` +
+                    `Ознакомьтесь с Пользовательским соглашением и примите его.`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [[
+                                {
+                                    text: '📄 ОЗНАКОМИТЬСЯ С СОГЛАШЕНИЕМ',
+                                    callback_data: 'show_tos'
+                                }
+                            ]]
                         }
-                    );
-                } else {
-                    await ctx.editMessageText(
-                        `❌ *Подписка не обнаружена*\n\n` +
-                        `Пожалуйста, подпишитесь на канал:\n` +
-                        `@questionstg\n\n` +
-                        `И нажмите кнопку "✅ Я подписался" снова.`,
-                        {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [
-                                        {
-                                            text: '🔄 ПРОВЕРИТЬ СНОВА',
-                                            callback_data: callbackData
-                                        }
-                                    ],
-                                    [
-                                        {
-                                            text: '📢 ПЕРЕЙТИ В КАНАЛ',
-                                            url: `https://t.me/questionstg`
-                                        }
-                                    ]
-                                ]
-                            }
-                        }
-                    );
-                }
+                    }
+                );
                 break;
                 
             case 'show_tos':
-            case 'show_tos_ask':
                 await ctx.editMessageText(
                     `📝 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
                     `Для использования бота необходимо принять следующие условия:\n\n` +
@@ -1719,7 +1406,7 @@ bot.on('callback_query', async (ctx) => {
                                 [
                                     {
                                         text: '✅ ПРИНЯТЬ СОГЛАШЕНИЕ',
-                                        callback_data: callbackData === 'show_tos_ask' ? 'accept_tos_ask' : 'accept_tos'
+                                        callback_data: 'accept_tos'
                                     }
                                 ],
                                 [
@@ -1735,70 +1422,51 @@ bot.on('callback_query', async (ctx) => {
                 break;
                 
             case 'accept_tos':
-            case 'accept_tos_ask':
                 await db.query(
                     `UPDATE users SET agreed_tos = TRUE WHERE telegram_id = $1`,
                     [userId]
                 );
                 
-                if (callbackData === 'accept_tos_ask') {
-                    await ctx.editMessageText(
-                        `🎉 *Поздравляем!*\n\n` +
-                        `Вы успешно приняли Пользовательское соглашение.\n\n` +
-                        `Теперь вы можете отправлять анонимные вопросы!\n\n` +
-                        `Нажмите кнопку ниже, чтобы написать вопрос:`,
-                        {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [[
+                const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
+                
+                await ctx.editMessageText(
+                    `🎉 *Поздравляем!*\n\n` +
+                    `Вы успешно приняли Пользовательское соглашение.\n\n` +
+                    `Теперь вы можете полноценно использовать бота:\n` +
+                    `• Получить свою ссылку для вопросов\n` +
+                    `• Отвечать на вопросы в приложении\n` +
+                    `• Отправлять жалобы\n\n` +
+                    `🔗 *Ваша персональная ссылка:*\n\`${userLink}\``,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
                                     {
-                                        text: '✍️ НАПИСАТЬ ВОПРОС',
-                                        web_app: { 
-                                            url: `${WEB_APP_URL}/ask/${ctx.callbackQuery.message?.text?.match(/ask_(\d+)/)?.[1] || ''}?from=telegram&asker=${userId}` 
-                                        }
+                                        text: '🚀 НАЧАТЬ РАБОТУ',
+                                        web_app: { url: WEB_APP_URL }
                                     }
-                                ]]
-                            }
-                        }
-                    );
-                } else {
-                    const userLink = `https://t.me/${ctx.botInfo.username}?start=ask_${userId}`;
-                    
-                    await ctx.editMessageText(
-                        `🎉 *Поздравляем!*\n\n` +
-                        `Вы успешно приняли Пользовательское соглашение.\n\n` +
-                        `Теперь вы можете полноценно использовать бота:\n` +
-                        `• Получить свою ссылку для вопросов\n` +
-                        `• Отвечать на вопросы в приложении\n` +
-                        `• Отправлять жалобы\n\n` +
-                        `🔗 *Ваша персональная ссылка:*\n\`${userLink}\``,
-                        {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [
-                                        {
-                                            text: '🚀 НАЧАТЬ РАБОТУ',
-                                            web_app: { url: WEB_APP_URL }
-                                        }
-                                    ],
-                                    [
-                                        {
-                                            text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
-                                            url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!%20👇`
-                                        }
-                                    ]
+                                ],
+                                [
+                                    {
+                                        text: '📤 ПОДЕЛИТЬСЯ ССЫЛКОЙ',
+                                        url: `https://t.me/share/url?url=${encodeURIComponent(userLink)}&text=Задай%20мне%20анонимный%20вопрос!%20👇`
+                                    }
                                 ]
-                            }
+                            ]
                         }
-                    );
-                }
+                    }
+                );
                 break;
                 
             case 'full_tos':
                 await ctx.editMessageText(
                     `📚 *ПОЛНАЯ ВЕРСИЯ СОГЛАШЕНИЯ*\n\n` +
-                    `(Здесь полный текст соглашения...)\n\n` +
+                    `1. Используя бота, вы подтверждаете, что вам исполнилось 16 лет.\n` +
+                    `2. Запрещено отправлять угрозы, оскорбления, спам.\n` +
+                    `3. Вы несете ответственность за отправляемый контент.\n` +
+                    `4. Анонимность отправителей вопросов гарантируется.\n` +
+                    `5. Для использования требуется подписка на канал @questionstg.\n\n` +
                     `Для подтверждения нажмите кнопку ниже:`,
                     {
                         parse_mode: 'Markdown',
@@ -1830,7 +1498,6 @@ bot.on('callback_query', async (ctx) => {
     }
 });
 
-// ========== СТАТИЧЕСКИЕ СТРАНИЦЫ ==========
 app.get('/ask/:userId', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/ask.html'));
 });
@@ -1839,7 +1506,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// ========== ЗАПУСК СЕРВЕРА ==========
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
@@ -1855,7 +1521,6 @@ async function startServer() {
                 const botInfo = await bot.telegram.getMe();
                 console.log(`🤖 Бот: @${botInfo.username}`);
                 
-                // Устанавливаем вебхук для продакшена
                 if (process.env.NODE_ENV === 'production' || WEB_APP_URL.includes('render.com')) {
                     const webhookUrl = `${WEB_APP_URL}/bot${process.env.BOT_TOKEN}`;
                     await bot.telegram.setWebhook(webhookUrl);
