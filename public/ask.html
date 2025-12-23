@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>✍️ Задать вопрос</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="https://telegram-questions-app.onrender.com/ask-style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app-container">
@@ -80,13 +80,89 @@
     </div>
     
     <script>
-        // Код из ask.html (тот же что и раньше, но с добавлением)
         let tg = window.Telegram?.WebApp;
         let currentUserId = null;
         let targetUserId = null;
         let askerUsername = null;
         
-        document.addEventListener('DOMContentLoaded', function() {
+        // Проверка доступа пользователя
+        async function checkAskerAccess() {
+            try {
+                if (!currentUserId) return true; // Для анонимов
+                
+                const response = await fetch(`/api/user/access/${currentUserId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (!data.isSubscribed) {
+                        document.body.innerHTML = `
+                            <div class="access-restricted">
+                                <div class="restricted-content">
+                                    <div class="restricted-icon">📢</div>
+                                    <h2>Требуется подписка</h2>
+                                    <p>Для отправки вопросов необходимо подписаться на наш Telegram-канал</p>
+                                    <div class="channel-info">
+                                        <strong>Канал:</strong> @questionstg
+                                    </div>
+                                    <div class="actions">
+                                        <button class="btn btn-primary" onclick="openChannel()">
+                                            📢 Перейти в канал
+                                        </button>
+                                        <button class="btn btn-secondary" onclick="location.reload()">
+                                            🔄 Я подписался
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        return false;
+                    }
+                    
+                    if (!data.agreedTOS) {
+                        document.body.innerHTML = `
+                            <div class="access-restricted">
+                                <div class="restricted-content">
+                                    <div class="restricted-icon">📝</div>
+                                    <h2>Требуется подтверждение</h2>
+                                    <p>Для отправки вопросов необходимо принять Пользовательское соглашение</p>
+                                    <div class="actions">
+                                        <button class="btn btn-primary" onclick="openTOS()">
+                                            📄 Принять соглашение
+                                        </button>
+                                        <button class="btn btn-secondary" onclick="location.reload()">
+                                            🔄 Вернуться назад
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        return false;
+                    }
+                }
+                return true;
+            } catch (error) {
+                console.error('Ошибка проверки доступа:', error);
+                return true; // Разрешаем отправку при ошибке
+            }
+        }
+        
+        function openChannel() {
+            if (tg && tg.openLink) {
+                tg.openLink('https://t.me/questionstg');
+            } else {
+                window.open('https://t.me/questionstg', '_blank');
+            }
+        }
+        
+        function openTOS() {
+            if (tg && tg.openTelegramLink) {
+                tg.openTelegramLink(`https://t.me/questionstgbot?start=tos`);
+            } else {
+                window.open(`https://t.me/questionstgbot?start=tos`, '_blank');
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', async function() {
             console.log('Страница вопроса загружена');
             
             // Инициализация Telegram WebApp
@@ -97,6 +173,12 @@
                 const initData = tg.initDataUnsafe || {};
                 currentUserId = initData.user?.id;
                 askerUsername = initData.user?.username || initData.user?.first_name || 'Аноним';
+                
+                // Проверяем доступ для зарегистрированных пользователей
+                if (currentUserId) {
+                    const hasAccess = await checkAskerAccess();
+                    if (!hasAccess) return;
+                }
                 
                 // Обновляем информацию о спрашивающем
                 document.getElementById('askerUsername').textContent = askerUsername;
@@ -124,9 +206,6 @@
             
             // Настраиваем счетчик символов
             setupCharCounter();
-            
-            // Добавляем статус-точку
-            setupStatusDot();
             
             // Фокус на поле ввода
             document.getElementById('questionText').focus();
@@ -178,13 +257,6 @@
                     warning.style.display = 'none';
                 }
             });
-        }
-        
-        function setupStatusDot() {
-            const statusElement = document.getElementById('statusText');
-            if (statusElement) {
-                statusElement.innerHTML = '<span class="status-dot"></span> ' + statusElement.innerHTML;
-            }
         }
         
         async function sendQuestion() {
@@ -323,43 +395,77 @@
             const statusElement = document.getElementById('statusText');
             if (statusElement) {
                 statusElement.textContent = status;
-                
-                const statusDot = statusElement.querySelector('.status-dot');
-                if (statusDot) {
-                    statusDot.className = 'status-dot';
-                    
-                    if (status.includes('🔴') || status.includes('❌')) {
-                        statusDot.className = 'status-dot error';
-                    } else if (status.includes('⚠️') || status.includes('🔄')) {
-                        statusDot.className = 'status-dot loading';
-                    }
-                }
             }
         }
         
-        // Функция показа уведомления
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
+        // Стили для ask.html
+        const style = document.createElement('style');
+        style.textContent = `
+            .access-restricted {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: var(--tg-bg-color);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                z-index: 10000;
+            }
             
-            const icons = { success: '✅', error: '❌', warning: '⚠️', info: '💡' };
+            .restricted-content {
+                background: var(--tg-secondary-bg);
+                border-radius: 20px;
+                padding: 40px 30px;
+                max-width: 500px;
+                width: 100%;
+                text-align: center;
+                border: 1px solid var(--tg-border-color);
+                box-shadow: var(--tg-shadow);
+            }
             
-            notification.innerHTML = `
-                <div class="notification-icon">${icons[type] || '💡'}</div>
-                <div>${message}</div>
-            `;
+            .restricted-icon {
+                font-size: 80px;
+                margin-bottom: 20px;
+                opacity: 0.8;
+            }
             
-            document.body.appendChild(notification);
+            .restricted-content h2 {
+                color: var(--tg-text-color);
+                margin-bottom: 15px;
+                font-size: 24px;
+            }
             
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
-            }, 3000);
-        }
-    </script>
-</body>
-</html>
+            .restricted-content p {
+                color: var(--tg-secondary-text);
+                margin-bottom: 20px;
+                line-height: 1.5;
+            }
+            
+            .channel-info {
+                background: rgba(46, 141, 230, 0.1);
+                border: 1px solid rgba(46, 141, 230, 0.3);
+                border-radius: 10px;
+                padding: 15px;
+                margin: 20px 0;
+                font-size: 18px;
+            }
+            
+            .actions {
+                display: flex;
+                gap: 12px;
+                margin-top: 30px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .actions .btn {
+                min-width: 180px;
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>

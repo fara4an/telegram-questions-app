@@ -501,6 +501,255 @@
         </div>
     </div>
 </div>
+
+<!-- Модалка для жалоб -->
+<div id="reportModal" class="modal-overlay" style="display: none;">
+    <div class="answer-modal">
+        <div class="modal-header">
+            <h3>
+                <span>⚠️</span>
+                Отправка жалобы
+            </h3>
+            <button class="close-btn" id="closeReportModal">×</button>
+        </div>
+        
+        <div class="answer-form">
+            <div class="form-group">
+                <label class="form-label">Причина жалобы:</label>
+                <textarea 
+                    id="reportReason" 
+                    class="answer-textarea"
+                    placeholder="Опишите подробно причину жалобы..."
+                    maxlength="1000"
+                    rows="6"
+                ></textarea>
+                
+                <div class="char-counter">
+                    <span id="reportCharCount">0</span> / 1000 символов
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">ID пользователя (если знаете):</label>
+                <input 
+                    type="number" 
+                    id="reportUserId" 
+                    class="answer-textarea"
+                    placeholder="123456789"
+                    style="height: auto; min-height: 44px;"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">ID вопроса (если есть):</label>
+                <input 
+                    type="number" 
+                    id="reportQuestionId" 
+                    class="answer-textarea"
+                    placeholder="789"
+                    style="height: auto; min-height: 44px;"
+                >
+            </div>
+            
+            <div style="
+                background: rgba(255, 152, 0, 0.1);
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-left: 3px solid #ff9800;
+            ">
+                <div style="display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="
+                        width: 28px;
+                        height: 28px;
+                        background: #ff9800;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 14px;
+                        flex-shrink: 0;
+                    ">ℹ️</div>
+                    <div style="font-size: 13px; color: #ffb74d;">
+                        <strong>Важно:</strong> Ложные жалобы могут привести к ограничению доступа к сервису. 
+                        Пожалуйста, описывайте нарушения максимально подробно.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeReportModal()">
+                Отмена
+            </button>
+            <button class="btn btn-primary" id="submitReportBtn">
+                <span>📤</span>
+                Отправить жалобу
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Стили для страницы ограничения доступа -->
+<style>
+.access-restricted {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--tg-bg-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 10000;
+}
+
+.restricted-content {
+    background: var(--tg-secondary-bg);
+    border-radius: 20px;
+    padding: 40px 30px;
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
+    border: 1px solid var(--tg-border-color);
+    box-shadow: var(--tg-shadow);
+}
+
+.restricted-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    opacity: 0.8;
+}
+
+.restricted-content h2 {
+    color: var(--tg-text-color);
+    margin-bottom: 15px;
+    font-size: 24px;
+}
+
+.restricted-content p {
+    color: var(--tg-secondary-text);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.channel-info {
+    background: rgba(46, 141, 230, 0.1);
+    border: 1px solid rgba(46, 141, 230, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 20px 0;
+    font-size: 18px;
+}
+
+.tos-preview {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.tos-preview h3 {
+    color: var(--tg-text-color);
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.tos-preview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tos-preview li {
+    color: var(--tg-secondary-text);
+    margin-bottom: 8px;
+    padding-left: 20px;
+    position: relative;
+}
+
+.tos-preview li::before {
+    content: "•";
+    color: var(--tg-accent-color);
+    position: absolute;
+    left: 0;
+}
+
+.actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.actions .btn {
+    min-width: 180px;
+}
+
+.report-btn-small {
+    background: none;
+    border: none;
+    color: var(--tg-warning);
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.report-btn-small:hover {
+    background: rgba(255, 152, 0, 0.1);
+}
+
+.reports-stats {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+}
+
+.report-stat {
+    background: var(--tg-input-bg);
+    border: 1px solid var(--tg-border-color);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+}
+
+.report-status {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.report-status.pending {
+    color: var(--tg-warning);
+}
+
+.report-status.approved {
+    color: var(--tg-success);
+}
+
+.report-status.rejected {
+    color: var(--tg-danger);
+}
+
+.report-count {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--tg-accent-color);
+}
+</style>
     
     <script src="app.js"></script>
 </body>

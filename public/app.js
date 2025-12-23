@@ -6,6 +6,191 @@ let currentQuestionId = null;
 let isAdmin = false;
 let isSuperAdmin = false;
 const botUsername = 'questionstgbot';
+const TELEGRAM_CHANNEL = '@questionstg';
+
+// ========== ПРОВЕРКА ДОСТУПА ==========
+
+async function checkUserAccess() {
+    try {
+        const response = await fetch(`/api/user/access/${userId}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        }
+        return { isSubscribed: false, agreedTOS: false, user: {} };
+    } catch (error) {
+        console.error('Ошибка проверки доступа:', error);
+        return { isSubscribed: false, agreedTOS: false, user: {} };
+    }
+}
+
+async function showAccessRestrictions() {
+    const access = await checkUserAccess();
+    
+    if (!access.isSubscribed) {
+        document.body.innerHTML = `
+            <div class="access-restricted">
+                <div class="restricted-content">
+                    <div class="restricted-icon">📢</div>
+                    <h2>Требуется подписка</h2>
+                    <p>Для использования приложения необходимо подписаться на наш Telegram-канал</p>
+                    <div class="channel-info">
+                        <strong>Канал:</strong> ${TELEGRAM_CHANNEL}
+                    </div>
+                    <p>После подписки обновите страницу</p>
+                    <div class="actions">
+                        <button class="btn btn-primary" onclick="openTelegramChannel()">
+                            📢 Перейти в канал
+                        </button>
+                        <button class="btn btn-secondary" onclick="location.reload()">
+                            🔄 Я подписался
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        return false;
+    }
+    
+    if (!access.agreedTOS) {
+        document.body.innerHTML = `
+            <div class="access-restricted">
+                <div class="restricted-content">
+                    <div class="restricted-icon">📝</div>
+                    <h2>Требуется подтверждение</h2>
+                    <p>Для использования приложения необходимо принять Пользовательское соглашение</p>
+                    <div class="tos-preview">
+                        <h3>Основные условия:</h3>
+                        <ul>
+                            <li>Возраст 16+</li>
+                            <li>Запрещены угрозы и оскорбления</li>
+                            <li>Вы отвечаете за свой контент</li>
+                            <li>Анонимность отправителей защищена</li>
+                        </ul>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-primary" onclick="acceptTOS()">
+                            ✅ Принять соглашение
+                        </button>
+                        <button class="btn btn-secondary" onclick="openTOSinBot()">
+                            📄 Подробнее
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        return false;
+    }
+    
+    return true;
+}
+
+function openTelegramChannel() {
+    if (tg && tg.openLink) {
+        tg.openLink('https://t.me/questionstg');
+    } else {
+        window.open('https://t.me/questionstg', '_blank');
+    }
+}
+
+async function acceptTOS() {
+    try {
+        showNotification('📤 Отправка запроса...', 'info');
+        
+        const response = await fetch('/api/user/agree-tos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userId })
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Соглашение принято!', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка принятия TOS:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
+function openTOSinBot() {
+    if (tg && tg.openTelegramLink) {
+        tg.openTelegramLink(`https://t.me/${botUsername}?start=tos`);
+    } else {
+        window.open(`https://t.me/${botUsername}?start=tos`, '_blank');
+    }
+}
+
+// ========== СИСТЕМА ЖАЛОБ ==========
+
+async function openReportModal(questionId = null, reportedUserId = null) {
+    const modal = getElement('reportModal');
+    if (!modal) {
+        console.error('Модалка reportModal не найдена');
+        return;
+    }
+    
+    // Сбрасываем форму
+    const questionIdInput = getElement('reportQuestionId');
+    const userIdInput = getElement('reportUserId');
+    const reasonInput = getElement('reportReason');
+    const charCount = getElement('reportCharCount');
+    
+    if (questionIdInput) questionIdInput.value = questionId || '';
+    if (userIdInput) userIdInput.value = reportedUserId || '';
+    if (reasonInput) {
+        reasonInput.value = '';
+        charCount.textContent = '0';
+    }
+    
+    modal.classList.add('active');
+}
+
+async function submitReport() {
+    const questionId = getElement('reportQuestionId')?.value;
+    const reportedUserId = getElement('reportUserId')?.value;
+    const reason = getElement('reportReason')?.value;
+    
+    if (!reason || reason.length < 10) {
+        showNotification('Опишите причину жалобы (минимум 10 символов)', 'warning');
+        return;
+    }
+    
+    try {
+        showNotification('📤 Отправка жалобы...', 'info');
+        
+        const response = await fetch('/api/user/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,
+                reportedUserId: reportedUserId || null,
+                questionId: questionId || null,
+                reason: reason
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            showNotification('✅ Жалоба #' + data.reportId + ' отправлена', 'success');
+            closeReportModal();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки жалобы:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
+function closeReportModal() {
+    const modal = getElement('reportModal');
+    if (modal) modal.classList.remove('active');
+}
 
 // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
@@ -29,6 +214,11 @@ async function initApp() {
     
     try {
         await initUserData();
+        
+        // Проверяем доступ пользователя
+        const hasAccess = await showAccessRestrictions();
+        if (!hasAccess) return;
+        
         await initUI();
         await loadAllData();
         setInterval(loadAllData, 30000);
@@ -99,6 +289,7 @@ async function initUI() {
     }
     
     setupTabs();
+    setupReportHandlers();
     console.log('✅ UI инициализирован');
 }
 
@@ -106,7 +297,6 @@ function addAdminTab() {
     const tabsContainer = document.querySelector('.tabs');
     if (!tabsContainer) return;
     
-    // Проверяем, нет ли уже вкладки админа
     if (document.getElementById('tab-admin')) return;
     
     const adminTab = document.createElement('button');
@@ -117,7 +307,6 @@ function addAdminTab() {
     
     tabsContainer.appendChild(adminTab);
     
-    // Добавляем контент для админ-панели
     const tabContent = document.querySelector('.tab-content');
     if (tabContent) {
         const adminPage = document.createElement('div');
@@ -135,6 +324,42 @@ function addAdminTab() {
     }
 }
 
+function setupReportHandlers() {
+    // Обработчик для кнопок репорта
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('report-btn') || e.target.closest('.report-btn')) {
+            const btn = e.target.classList.contains('report-btn') ? e.target : e.target.closest('.report-btn');
+            const questionId = btn.getAttribute('data-question-id');
+            const reportedUserId = btn.getAttribute('data-user-id');
+            openReportModal(questionId, reportedUserId);
+        }
+        
+        if (e.target.classList.contains('report-btn-small')) {
+            const questionId = e.target.getAttribute('data-question-id');
+            const reportedUserId = e.target.getAttribute('data-user-id');
+            openReportModal(questionId, reportedUserId);
+        }
+        
+        if (e.target.id === 'submitReportBtn' || e.target.closest('#submitReportBtn')) {
+            submitReport();
+        }
+        
+        if (e.target.id === 'closeReportModal' || e.target.closest('#closeReportModal')) {
+            closeReportModal();
+        }
+    });
+    
+    // Счетчик символов для формы жалобы
+    const reportReason = getElement('reportReason');
+    const reportCharCount = getElement('reportCharCount');
+    
+    if (reportReason && reportCharCount) {
+        reportReason.addEventListener('input', function() {
+            reportCharCount.textContent = this.value.length;
+        });
+    }
+}
+
 async function loadAllData() {
     console.log('📥 Загрузка данных...');
     updateStatus('🔄 Загрузка...');
@@ -146,7 +371,6 @@ async function loadAllData() {
             loadStats()
         ]);
         
-        // Загружаем админ-панель если пользователь админ
         if (isAdmin) {
             await loadAdminPanel();
         }
@@ -188,7 +412,7 @@ function renderAdminPanel(data) {
     const adminPanel = document.querySelector('.admin-panel');
     if (!adminPanel) return;
     
-    const { stats, userStats, referralStats } = data;
+    const { stats } = data;
     
     adminPanel.innerHTML = `
         <div class="admin-header">
@@ -215,198 +439,38 @@ function renderAdminPanel(data) {
             </div>
         </div>
         
-        ${stats.isSuperAdmin ? `
         <div class="admin-section">
-            <h3>👥 Пользователи</h3>
-            <div class="users-table-container">
-                <table class="users-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Username</th>
-                            <th>Роль</th>
-                            <th>Вопросы</th>
-                            <th>Приглашено</th>
-                            <th>Дата</th>
-                        </tr>
-                    </thead>
-                    <tbody id="usersTableBody">
-                        ${userStats.map(user => `
-                            <tr>
-                                <td><code>${user.telegram_id}</code></td>
-                                <td>${user.username || '-'}</td>
-                                <td>
-                                    ${user.is_super_admin ? '👑 Супер-админ' : user.is_admin ? '🛠️ Админ' : '👤 Пользователь'}
-                                </td>
-                                <td>${user.questions_sent} отправ. / ${user.questions_received} получ. / ${user.questions_answered} ответ.</td>
-                                <td>${user.invited_users}</td>
-                                <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        
-        <div class="admin-section">
-            <h3>👑 Назначение админов</h3>
-            <div class="make-admin-form">
-                <input type="number" id="adminUserId" placeholder="ID пользователя" class="admin-input">
-                <button onclick="makeAdmin()" class="btn btn-primary">Сделать админом</button>
-            </div>
-        </div>
-        ` : ''}
-        
-        <div class="admin-section">
-            <h3>🔗 Реферальные ссылки</h3>
-            <div class="referral-actions">
-                <button onclick="createReferralLink()" class="btn btn-primary">
-                    🔗 Создать реферальную ссылку
-                </button>
-            </div>
-            
-            ${referralStats.length > 0 ? `
-            <div class="referrals-list">
-                <h4>Ваши реферальные ссылки:</h4>
-                ${referralStats.map(ref => `
-                    <div class="referral-item">
-                        <div class="referral-code">
-                            <strong>Код:</strong> <code>${ref.referral_code}</code>
-                        </div>
-                        <div class="referral-link">
-                            <strong>Ссылка:</strong> 
-                            <code>https://t.me/${botUsername}?start=ref_${ref.referral_code}</code>
-                        </div>
-                        <div class="referral-stats">
-                            <span>Использовано: ${ref.used_count}/${ref.max_uses}</span>
-                            <span>Создал: ${ref.admin_username || 'админ'}</span>
-                            <span>Статус: ${ref.is_active ? '✅ Активна' : '❌ Не активна'}</span>
-                        </div>
+            <h3>📊 Статистика жалоб</h3>
+            <div class="reports-stats">
+                ${stats.reports.map(report => `
+                    <div class="report-stat">
+                        <span class="report-status ${report.status}">${report.status}</span>
+                        <span class="report-count">${report.count}</span>
                     </div>
                 `).join('')}
             </div>
-            ` : '<p class="empty-message">У вас нет реферальных ссылок</p>'}
+            <button onclick="viewReports()" class="btn btn-primary" style="margin-top: 15px;">
+                👁️ Просмотреть жалобы
+            </button>
         </div>
         
         <div class="admin-actions">
             <button onclick="refreshAdminPanel()" class="btn btn-secondary">
                 🔄 Обновить
             </button>
-            ${stats.isSuperAdmin ? `
-            <button onclick="exportData()" class="btn btn-primary">
-                📊 Экспорт данных
-            </button>
-            ` : ''}
         </div>
     `;
 }
 
-async function makeAdmin() {
-    const targetUserId = document.getElementById('adminUserId')?.value;
-    
-    if (!targetUserId) {
-        showNotification('Введите ID пользователя', 'warning');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/admin/make-admin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: userId,
-                targetUserId: targetUserId
-            })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            showNotification('✅ Пользователь назначен админом', 'success');
-            document.getElementById('adminUserId').value = '';
-            await loadAdminPanel();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка назначения админа:', error);
-        showNotification('❌ ' + error.message, 'error');
-    }
+function viewReports() {
+    showNotification('Просмотр жалоб в разработке', 'info');
 }
 
-async function createReferralLink() {
-    try {
-        const response = await fetch('/api/admin/create-referral', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: userId })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            
-            // Копируем ссылку в буфер обмена
-            navigator.clipboard.writeText(data.referralLink).then(() => {
-                showNotification('✅ Реферальная ссылка создана и скопирована!', 'success');
-            }).catch(() => {
-                showNotification(`✅ Реферальная ссылка создана: ${data.referralLink}`, 'success');
-            });
-            
-            await loadAdminPanel();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка создания реферальной ссылки:', error);
-        showNotification('❌ ' + error.message, 'error');
-    }
+async function refreshAdminPanel() {
+    await loadAdminPanel();
 }
 
-function refreshAdminPanel() {
-    loadAdminPanel();
-}
-
-function exportData() {
-    showNotification('Экспорт данных в разработке', 'info');
-}
-
-// ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
-
-async function showTestData() {
-    const testIncoming = [
-        {
-            id: 1,
-            text: "Тестовый вопрос 1?",
-            answer: null,
-            is_answered: false,
-            created_at: new Date().toISOString(),
-            from_username: 'Аноним'
-        }
-    ];
-    
-    const testSent = [
-        {
-            id: 2,
-            text: "Тестовый отправленный вопрос?",
-            answer: "Тестовый ответ",
-            is_answered: true,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            to_user_id: 123456,
-            to_username: 'test_user'
-        }
-    ];
-    
-    renderIncomingQuestions(testIncoming);
-    renderSentQuestions(testSent);
-    updateBadge('incoming', testIncoming.length);
-    updateBadge('sent', testSent.length);
-    
-    setText('statTotal', '2');
-    setText('statReceived', '1');
-    setText('statSent', '1');
-    setText('statAnswered', '1');
-}
+// ========== ВОПРОСЫ И ОТВЕТЫ ==========
 
 async function loadIncomingQuestions() {
     try {
@@ -446,39 +510,6 @@ async function loadSentQuestions() {
     }
 }
 
-async function loadStats() {
-    try {
-        const response = await fetch(`/api/stats/${userId}`);
-        
-        if (response.ok) {
-            const stats = await response.json();
-            setText('statTotal', stats.total || '0');
-            setText('statReceived', stats.received || '0');
-            setText('statSent', stats.sent || '0');
-            setText('statAnswered', stats.answered || '0');
-            
-            // Обновляем количество приглашенных если есть
-            if (stats.invited !== undefined) {
-                const invitedElement = document.getElementById('statInvited');
-                if (invitedElement) {
-                    invitedElement.textContent = stats.invited;
-                }
-            }
-        } else {
-            setText('statTotal', '0');
-            setText('statReceived', '0');
-            setText('statSent', '0');
-            setText('statAnswered', '0');
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки статистики:', error);
-        setText('statTotal', '0');
-        setText('statReceived', '0');
-        setText('statSent', '0');
-        setText('statAnswered', '0');
-    }
-}
-
 function renderIncomingQuestions(questions) {
     const container = getElement('incoming-list');
     if (!container) return;
@@ -503,6 +534,10 @@ function renderIncomingQuestions(questions) {
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
                     ${q.from_username ? `@${q.from_username}` : '👤 Аноним'}
+                    <button class="report-btn-small" data-question-id="${q.id}" data-user-id="${q.from_user_id}" 
+                            title="Пожаловаться">
+                        ⚠️
+                    </button>
                 </div>
             </div>
             <div class="question-text">${escapeHtml(q.text)}</div>
@@ -515,6 +550,11 @@ function renderIncomingQuestions(questions) {
                     <button class="btn btn-primary" onclick="shareAnswer(${q.id})">
                         📤 Поделиться ответом
                     </button>
+                    <button class="btn btn-secondary report-btn" 
+                            data-question-id="${q.id}" 
+                            data-user-id="${q.from_user_id}">
+                        ⚠️ Пожаловаться
+                    </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
                         🗑️ Удалить
                     </button>
@@ -523,6 +563,11 @@ function renderIncomingQuestions(questions) {
                 <div class="btn-group">
                     <button class="btn btn-success" onclick="openAnswerModal(${q.id})">
                         ✍️ Ответить
+                    </button>
+                    <button class="btn btn-secondary report-btn" 
+                            data-question-id="${q.id}" 
+                            data-user-id="${q.from_user_id}">
+                        ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
                         🗑️ Удалить
@@ -577,6 +622,181 @@ function renderSentQuestions(questions) {
     container.innerHTML = html;
 }
 
+async function loadStats() {
+    try {
+        const response = await fetch(`/api/stats/${userId}`);
+        
+        if (response.ok) {
+            const stats = await response.json();
+            setText('statTotal', stats.total || '0');
+            setText('statReceived', stats.received || '0');
+            setText('statSent', stats.sent || '0');
+            setText('statAnswered', stats.answered || '0');
+        } else {
+            setText('statTotal', '0');
+            setText('statReceived', '0');
+            setText('statSent', '0');
+            setText('statAnswered', '0');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки статистики:', error);
+        setText('statTotal', '0');
+        setText('statReceived', '0');
+        setText('statSent', '0');
+        setText('statAnswered', '0');
+    }
+}
+
+async function showTestData() {
+    const testIncoming = [
+        {
+            id: 1,
+            text: "Тестовый вопрос 1?",
+            answer: null,
+            is_answered: false,
+            created_at: new Date().toISOString(),
+            from_username: 'Аноним',
+            from_user_id: 123456
+        }
+    ];
+    
+    const testSent = [
+        {
+            id: 2,
+            text: "Тестовый отправленный вопрос?",
+            answer: "Тестовый ответ",
+            is_answered: true,
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+            to_user_id: 123456,
+            to_username: 'test_user'
+        }
+    ];
+    
+    renderIncomingQuestions(testIncoming);
+    renderSentQuestions(testSent);
+    updateBadge('incoming', testIncoming.length);
+    updateBadge('sent', testSent.length);
+    
+    setText('statTotal', '2');
+    setText('statReceived', '1');
+    setText('statSent', '1');
+    setText('statAnswered', '1');
+}
+
+// ========== ОБРАБОТКА ОТВЕТОВ ==========
+
+function openAnswerModal(questionId) {
+    currentQuestionId = questionId;
+    const modal = getElement('answerModal');
+    
+    if (!modal) {
+        console.error('Модалка answerModal не найдена');
+        return;
+    }
+    
+    fetch(`/api/question/${questionId}`)
+        .then(response => response.json())
+        .then(question => {
+            const previewElement = getElement('previewQuestionText');
+            if (previewElement) {
+                previewElement.textContent = question.text;
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки вопроса:', error);
+        });
+    
+    const answerText = getElement('answerText');
+    const charCount = getElement('answerCharCount');
+    const progressBar = getElement('charProgressBar');
+    const warning = getElement('charLimitWarning');
+    
+    if (answerText && charCount && progressBar && warning) {
+        answerText.value = '';
+        charCount.textContent = '0';
+        progressBar.style.width = '0%';
+        warning.style.display = 'none';
+        
+        answerText.addEventListener('input', function() {
+            const length = this.value.length;
+            charCount.textContent = length;
+            
+            const percentage = (length / 1000) * 100;
+            progressBar.style.width = `${Math.min(percentage, 100)}%`;
+            
+            if (length > 900) {
+                progressBar.style.background = 'linear-gradient(90deg, #FF9800 0%, #FF5722 100%)';
+                warning.style.display = 'inline';
+            } else if (length > 700) {
+                progressBar.style.background = 'linear-gradient(90deg, #FFC107 0%, #FF9800 100%)';
+                warning.style.display = 'inline';
+            } else {
+                progressBar.style.background = 'linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%)';
+                warning.style.display = 'none';
+            }
+            
+            if (length > 1000) {
+                this.value = this.value.substring(0, 1000);
+                charCount.textContent = '1000';
+                progressBar.style.width = '100%';
+                progressBar.style.background = 'linear-gradient(90deg, #FF5722 0%, #F44336 100%)';
+                showNotification('Достигнут лимит символов!', 'warning');
+            }
+        });
+        
+        setTimeout(() => answerText.focus(), 300);
+    }
+    
+    modal.classList.add('active');
+}
+
+function closeAnswerModal() {
+    const modal = getElement('answerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function submitAnswer() {
+    const answerText = getElement('answerText');
+    const answer = answerText?.value.trim();
+    
+    if (!answer) {
+        showNotification('Введите текст ответа', 'warning');
+        return;
+    }
+    
+    if (answer.length < 2) {
+        showNotification('Ответ слишком короткий (минимум 2 символа)', 'warning');
+        return;
+    }
+    
+    if (!currentQuestionId) {
+        showNotification('Ошибка: вопрос не выбран', 'error');
+        return;
+    }
+    
+    showNotification('📤 Отправка ответа...', 'info');
+    
+    try {
+        const response = await fetch(`/api/questions/${currentQuestionId}/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answer: answer })
+        });
+        
+        if (response.ok) {
+            closeAnswerModal();
+            showNotification('✅ Ответ сохранен!', 'success');
+            await loadAllData();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки ответа:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
 async function shareAnswer(questionId) {
     try {
         showNotification('📤 Отправка ответа в чат...', 'info');
@@ -616,6 +836,30 @@ async function shareAnswer(questionId) {
     }
 }
 
+async function deleteQuestion(questionId) {
+    if (!confirm('Удалить вопрос? Это действие нельзя отменить.')) return;
+    
+    try {
+        showNotification('🗑️ Удаление...', 'info');
+        
+        const response = await fetch(`/api/questions/${questionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Вопрос удален', 'success');
+            await loadAllData();
+        } else {
+            throw new Error('Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка удаления:', error);
+        showNotification('❌ Не удалось удалить вопрос', 'error');
+    }
+}
+
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+
 function setupTabs() {
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -630,7 +874,6 @@ function setupTabs() {
             
             document.querySelector('.tab-content').scrollTop = 0;
             
-            // Если выбрана вкладка админа, обновляем данные
             if (tabId === 'admin' && isAdmin) {
                 loadAdminPanel();
             }
@@ -725,7 +968,7 @@ function showNotificationWithAction(message, type, actionText, actionCallback) {
         </div>
         <button onclick="
             this.parentElement.remove();
-            (${actionCallback.toString().replace('function ', 'function ')})();
+            (${actionCallback.toString()})();
         " style="
             padding: 6px 12px;
             background: rgba(255, 255, 255, 0.2);
@@ -763,137 +1006,6 @@ function shareProfileToTelegram() {
     }
 }
 
-// ========== ОБРАБОТКА ОТВЕТОВ ==========
-
-function openAnswerModal(questionId) {
-    currentQuestionId = questionId;
-    const modal = getElement('answerModal');
-    
-    fetch(`/api/question/${questionId}`)
-        .then(response => response.json())
-        .then(question => {
-            const previewElement = getElement('previewQuestionText');
-            if (previewElement) {
-                previewElement.textContent = question.text;
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки вопроса:', error);
-        });
-    
-    const answerText = getElement('answerText');
-    const charCount = getElement('answerCharCount');
-    const progressBar = getElement('charProgressBar');
-    const warning = getElement('charLimitWarning');
-    
-    if (answerText && charCount && progressBar && warning) {
-        answerText.value = '';
-        charCount.textContent = '0';
-        progressBar.style.width = '0%';
-        warning.style.display = 'none';
-        
-        answerText.addEventListener('input', function() {
-            const length = this.value.length;
-            charCount.textContent = length;
-            
-            const percentage = (length / 1000) * 100;
-            progressBar.style.width = `${Math.min(percentage, 100)}%`;
-            
-            if (length > 900) {
-                progressBar.style.background = 'linear-gradient(90deg, #FF9800 0%, #FF5722 100%)';
-                warning.style.display = 'inline';
-            } else if (length > 700) {
-                progressBar.style.background = 'linear-gradient(90deg, #FFC107 0%, #FF9800 100%)';
-                warning.style.display = 'inline';
-            } else {
-                progressBar.style.background = 'linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%)';
-                warning.style.display = 'none';
-            }
-            
-            if (length > 1000) {
-                this.value = this.value.substring(0, 1000);
-                charCount.textContent = '1000';
-                progressBar.style.width = '100%';
-                progressBar.style.background = 'linear-gradient(90deg, #FF5722 0%, #F44336 100%)';
-                showNotification('Достигнут лимит символов!', 'warning');
-            }
-        });
-        
-        setTimeout(() => answerText.focus(), 300);
-    }
-    
-    if (modal) modal.classList.add('active');
-}
-
-function closeAnswerModal() {
-    const modal = getElement('answerModal');
-    if (modal) modal.classList.remove('active');
-}
-
-async function submitAnswer() {
-    const answerText = getElement('answerText');
-    const answer = answerText?.value.trim();
-    
-    if (!answer) {
-        showNotification('Введите текст ответа', 'warning');
-        return;
-    }
-    
-    if (answer.length < 2) {
-        showNotification('Ответ слишком короткий (минимум 2 символа)', 'warning');
-        return;
-    }
-    
-    if (!currentQuestionId) {
-        showNotification('Ошибка: вопрос не выбран', 'error');
-        return;
-    }
-    
-    showNotification('📤 Отправка ответа...', 'info');
-    
-    try {
-        const response = await fetch(`/api/questions/${currentQuestionId}/answer`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ answer: answer })
-        });
-        
-        if (response.ok) {
-            closeAnswerModal();
-            showNotification('✅ Ответ сохранен!', 'success');
-            await loadAllData();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка отправки ответа:', error);
-        showNotification('❌ Ошибка: ' + error.message, 'error');
-    }
-}
-
-async function deleteQuestion(questionId) {
-    if (!confirm('Удалить вопрос? Это действие нельзя отменить.')) return;
-    
-    try {
-        showNotification('🗑️ Удаление...', 'info');
-        
-        const response = await fetch(`/api/questions/${questionId}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.ok) {
-            showNotification('✅ Вопрос удален', 'success');
-            await loadAllData();
-        } else {
-            throw new Error('Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка удаления:', error);
-        showNotification('❌ Не удалось удалить вопрос', 'error');
-    }
-}
-
 // ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -912,3 +1024,9 @@ window.makeAdmin = makeAdmin;
 window.createReferralLink = createReferralLink;
 window.refreshAdminPanel = refreshAdminPanel;
 window.showNotificationWithAction = showNotificationWithAction;
+window.openReportModal = openReportModal;
+window.submitReport = submitReport;
+window.closeReportModal = closeReportModal;
+window.acceptTOS = acceptTOS;
+window.openTelegramChannel = openTelegramChannel;
+window.openTOSinBot = openTOSinBot;
