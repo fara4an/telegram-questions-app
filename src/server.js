@@ -103,7 +103,7 @@ async function initDB() {
             );
         `);
         
-        // ДОБАВЛЯЕМ КОЛОНКУ is_blocked ЕСЛИ ОНА НЕ СУЩЕСТВУЕТ
+        // ДОБАВЛЯЕМ КОЛОНКИ ЕСЛИ ОНИ НЕ СУЩЕСТВУЮТ
         try {
             await db.query(`
                 DO $$ 
@@ -138,6 +138,12 @@ async function initDB() {
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                  WHERE table_name='questions' AND column_name='report_count') THEN
                         ALTER TABLE questions ADD COLUMN report_count INTEGER DEFAULT 0;
+                    END IF;
+                    
+                    -- Проверяем и добавляем колонку details в таблицу reports
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                 WHERE table_name='reports' AND column_name='details') THEN
+                        ALTER TABLE reports ADD COLUMN details TEXT;
                     END IF;
                 END $$;
             `);
@@ -255,6 +261,32 @@ async function verifyUserAccess(userId) {
             );
         }
         
+        // Проверяем блокировку
+        const blockedResult = await db.query(
+            `SELECT is_blocked, blocked_until FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        
+        if (blockedResult.rows.length > 0) {
+            const user = blockedResult.rows[0];
+            if (user.is_blocked && user.blocked_until) {
+                if (new Date(user.blocked_until) > new Date()) {
+                    return { 
+                        isSubscribed: false, 
+                        agreedTOS: false, 
+                        isBlocked: true,
+                        blockedUntil: user.blocked_until 
+                    };
+                } else {
+                    // Разблокируем если время истекло
+                    await db.query(
+                        `UPDATE users SET is_blocked = FALSE, blocked_until = NULL WHERE telegram_id = $1`,
+                        [userId]
+                    );
+                }
+            }
+        }
+        
         // Проверяем подписку и TOS
         const [isSubscribed, agreedTOS] = await Promise.all([
             checkChannelSubscription(userId),
@@ -293,7 +325,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // ========== АДМИН API ==========
 
-// Получение роли пользователя (исправленная версия без is_blocked для совместимости)
+// Получение роли пользователя
 app.get('/api/user/role/:userId', async (req, res) => {
     try {
         const result = await db.query(
@@ -333,41 +365,23 @@ app.get('/api/admin/users', async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
         }
         
-        // Проверяем существование колонки is_blocked
-        let usersResult;
-        try {
-            usersResult = await db.query(`
-                SELECT 
-                    telegram_id,
-                    username,
-                    first_name,
-                    last_name,
-                    is_admin,
-                    is_super_admin,
-                    agreed_tos,
-                    subscribed_channel,
-                    created_at
-                FROM users 
-                ORDER BY created_at DESC
-            `);
-        } catch (error) {
-            // Если ошибка из-за отсутствия колонки, используем запрос без нее
-            console.log('Используем запрос без is_blocked:', error.message);
-            usersResult = await db.query(`
-                SELECT 
-                    telegram_id,
-                    username,
-                    first_name,
-                    last_name,
-                    is_admin,
-                    is_super_admin,
-                    agreed_tos,
-                    subscribed_channel,
-                    created_at
-                FROM users 
-                ORDER BY created_at DESC
-            `);
-        }
+        const usersResult = await db.query(`
+            SELECT 
+                telegram_id,
+                username,
+                first_name,
+                last_name,
+                is_admin,
+                is_super_admin,
+                agreed_tos,
+                subscribed_channel,
+                is_blocked,
+                blocked_until,
+                block_reason,
+                created_at
+            FROM users 
+            ORDER BY created_at DESC
+        `);
         
         res.json({
             success: true,
@@ -383,27 +397,27 @@ app.get('/api/admin/users', async (req, res) => {
 // Получение статистики
 app.get('/api/admin/stats', async (req, res) => {
     try {
-        const userId = req.query.userId;
+        const adminId = req.query.userId;
         
-        if (!userId) {
+        if (!adminId) {
             return res.status(400).json({ error: 'Не указан userId' });
         }
         
         const result = await db.query(
             `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
-            [userId]
+            [adminId]
         );
         
         if (result.rows.length === 0 || (!result.rows[0].is_super_admin && !result.rows[0].is_admin)) {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
         
-        const [totalUsers, totalQuestions, answeredQuestions, activeToday, reportsStats] = await Promise.all([
+        const [totalUsers, totalQuestions, answeredQuestions, activeToday, blockedUsers] = await Promise.all([
             db.query(`SELECT COUNT(*) as count FROM users`),
             db.query(`SELECT COUNT(*) as count FROM questions WHERE is_deleted = FALSE`),
             db.query(`SELECT COUNT(*) as count FROM questions WHERE is_answered = TRUE AND is_deleted = FALSE`),
             db.query(`SELECT COUNT(DISTINCT from_user_id) as count FROM questions WHERE created_at >= CURRENT_DATE`),
-            db.query(`SELECT status, COUNT(*) as count FROM reports GROUP BY status`)
+            db.query(`SELECT COUNT(*) as count FROM users WHERE is_blocked = TRUE`)
         ]);
         
         res.json({
@@ -413,7 +427,7 @@ app.get('/api/admin/stats', async (req, res) => {
                 totalQuestions: parseInt(totalQuestions.rows[0].count),
                 answeredQuestions: parseInt(answeredQuestions.rows[0].count),
                 activeToday: parseInt(activeToday.rows[0].count),
-                reports: reportsStats.rows
+                blockedUsers: parseInt(blockedUsers.rows[0].count)
             }
         });
         
@@ -463,10 +477,11 @@ app.get('/api/admin/reports', async (req, res) => {
                 rep.first_name as reporter_first_name,
                 rep.last_name as reporter_last_name
             FROM reports r
-            LEFT JOIN questions q ON r.question_id = q.id
+            LEFT JOIN questions q ON r.question_id = q.id AND q.is_deleted = FALSE
             LEFT JOIN users ru ON r.reported_user_id = ru.telegram_id
             LEFT JOIN users rep ON r.reporter_id = rep.telegram_id
             ORDER BY r.created_at DESC
+            LIMIT 50
         `);
         
         res.json({
@@ -480,21 +495,226 @@ app.get('/api/admin/reports', async (req, res) => {
     }
 });
 
+// Блокировка пользователя
+app.post('/api/admin/block-user', async (req, res) => {
+    try {
+        const { adminId, userId: targetUserId, durationHours, isPermanent, reason } = req.body;
+        
+        console.log('Блокировка пользователя:', { adminId, targetUserId, durationHours, isPermanent, reason });
+        
+        if (!adminId || !targetUserId || !reason) {
+            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
+            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
+        }
+        
+        let blockedUntil = null;
+        if (!isPermanent && durationHours) {
+            blockedUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+        }
+        
+        // Обновляем статус пользователя
+        await db.query(`
+            UPDATE users 
+            SET is_blocked = TRUE, 
+                blocked_until = $1,
+                block_reason = $2,
+                block_count = COALESCE(block_count, 0) + 1
+            WHERE telegram_id = $3
+        `, [blockedUntil, reason, targetUserId]);
+        
+        // Записываем в историю блокировок
+        await db.query(`
+            INSERT INTO user_blocks (user_id, admin_id, reason, duration_hours, blocked_until, is_permanent)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [targetUserId, adminId, reason, durationHours || null, blockedUntil, isPermanent || false]);
+        
+        // Отправляем уведомление пользователю
+        try {
+            const blockMessage = isPermanent ? 
+                `🚫 Ваш аккаунт был заблокирован навсегда.\nПричина: ${reason}` :
+                `🚫 Ваш аккаунт был заблокирован до ${blockedUntil.toLocaleString('ru-RU')}.\nПричина: ${reason}`;
+            
+            await bot.telegram.sendMessage(targetUserId, blockMessage);
+        } catch (error) {
+            console.error('Ошибка отправки уведомления о блокировке:', error.message);
+        }
+        
+        res.json({
+            success: true,
+            message: 'Пользователь заблокирован'
+        });
+        
+    } catch (error) {
+        console.error('Error blocking user:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Разблокировка пользователя
+app.post('/api/admin/unblock-user', async (req, res) => {
+    try {
+        const { adminId, userId: targetUserId } = req.body;
+        
+        if (!adminId || !targetUserId) {
+            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
+            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
+        }
+        
+        await db.query(`
+            UPDATE users 
+            SET is_blocked = FALSE, 
+                blocked_until = NULL,
+                block_reason = NULL
+            WHERE telegram_id = $1
+        `, [targetUserId]);
+        
+        try {
+            await bot.telegram.sendMessage(targetUserId, '✅ Ваш аккаунт был разблокирован администратором.');
+        } catch (error) {
+            console.error('Ошибка отправки уведомления о разблокировке:', error.message);
+        }
+        
+        res.json({
+            success: true,
+            message: 'Пользователь разблокирован'
+        });
+        
+    } catch (error) {
+        console.error('Error unblocking user:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Удаление данных
+app.post('/api/admin/delete-data', async (req, res) => {
+    try {
+        const { adminId, userId: targetUserId, deleteType } = req.body;
+        
+        console.log('Удаление данных:', { adminId, targetUserId, deleteType });
+        
+        if (!adminId || !targetUserId || !deleteType) {
+            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
+            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
+        }
+        
+        if (deleteType === 'questions') {
+            // Удаляем все вопросы пользователя
+            await db.query(
+                `UPDATE questions SET is_deleted = TRUE WHERE from_user_id = $1 OR to_user_id = $1`,
+                [targetUserId]
+            );
+            await db.query(
+                `UPDATE reports SET status = 'resolved' WHERE reported_user_id = $1 OR reporter_id = $1`,
+                [targetUserId]
+            );
+        } else if (deleteType === 'account') {
+            // Удаляем все данные пользователя
+            await db.query(
+                `DELETE FROM questions WHERE from_user_id = $1 OR to_user_id = $1`,
+                [targetUserId]
+            );
+            await db.query(
+                `DELETE FROM reports WHERE reporter_id = $1 OR reported_user_id = $1`,
+                [targetUserId]
+            );
+            await db.query(
+                `DELETE FROM users WHERE telegram_id = $1`,
+                [targetUserId]
+            );
+        }
+        
+        res.json({
+            success: true,
+            message: `Данные типа '${deleteType}' удалены для пользователя ${targetUserId}`
+        });
+        
+    } catch (error) {
+        console.error('Error deleting data:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Обновление статуса жалобы
+app.post('/api/admin/update-report', async (req, res) => {
+    try {
+        const { adminId, reportId, status, actionTaken, adminNotes } = req.body;
+        
+        if (!adminId || !reportId || !status) {
+            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || (!adminResult.rows[0].is_super_admin && !adminResult.rows[0].is_admin)) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        await db.query(`
+            UPDATE reports 
+            SET status = $1, 
+                admin_id = $2,
+                action_taken = $3,
+                admin_notes = $4,
+                resolved_at = CASE WHEN $1 != 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END
+            WHERE id = $5
+        `, [status, adminId, actionTaken || null, adminNotes || null, reportId]);
+        
+        res.json({
+            success: true,
+            message: 'Статус жалобы обновлен'
+        });
+        
+    } catch (error) {
+        console.error('Error updating report:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ========== ПОЛЬЗОВАТЕЛЬСКИЕ API ==========
+
 app.get('/api/user/access/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
         const access = await verifyUserAccess(userId);
         
         const userResult = await db.query(
-            `SELECT username, agreed_tos, subscribed_channel FROM users WHERE telegram_id = $1`,
+            `SELECT username, agreed_tos, subscribed_channel, is_blocked, blocked_until FROM users WHERE telegram_id = $1`,
             [userId]
         );
         
         const userData = userResult.rows.length > 0 ? userResult.rows[0] : {
             username: null,
             agreed_tos: false,
-            subscribed_channel: false
+            subscribed_channel: false,
+            is_blocked: false,
+            blocked_until: null
         };
         
         res.json({
@@ -511,7 +731,9 @@ app.get('/api/user/access/:userId', async (req, res) => {
             user: {
                 username: null,
                 agreed_tos: false,
-                subscribed_channel: false
+                subscribed_channel: false,
+                is_blocked: false,
+                blocked_until: null
             }
         });
     }
@@ -575,7 +797,7 @@ app.post('/api/user/report', async (req, res) => {
         if (questionId) {
             try {
                 await db.query(
-                    `UPDATE questions SET report_count = report_count + 1 WHERE id = $1`,
+                    `UPDATE questions SET report_count = COALESCE(report_count, 0) + 1 WHERE id = $1`,
                     [questionId]
                 );
             } catch (error) {
@@ -639,15 +861,10 @@ app.get('/api/questions/incoming/:userId', async (req, res) => {
                 q.is_answered,
                 q.created_at,
                 q.answered_at,
-                -- Показываем "Аноним" всегда для анонимных вопросов
-                CASE 
-                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
-                    WHEN u.username IS NOT NULL THEN '@' || u.username
-                    WHEN u.first_name IS NOT NULL THEN u.first_name
-                    ELSE '👤 Пользователь'
-                END as from_username
+                q.report_count,
+                -- ВСЕГДА показываем "Аноним" для входящих вопросов
+                '👤 Аноним' as from_username
             FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id
             WHERE q.to_user_id = $1 
             AND (q.is_deleted = FALSE OR q.is_deleted IS NULL)
             ORDER BY q.created_at DESC
@@ -670,6 +887,7 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
                 q.is_answered,
                 q.created_at,
                 q.answered_at,
+                q.report_count,
                 CASE 
                     WHEN u.username IS NOT NULL THEN '@' || u.username
                     WHEN u.first_name IS NOT NULL THEN u.first_name
@@ -700,14 +918,10 @@ app.get('/api/question/:id', async (req, res) => {
                 q.is_answered,
                 q.created_at,
                 q.answered_at,
-                CASE 
-                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
-                    WHEN u.username IS NOT NULL THEN '@' || u.username
-                    WHEN u.first_name IS NOT NULL THEN u.first_name
-                    ELSE '👤 Пользователь'
-                END as from_username
+                q.from_user_id,
+                -- ВСЕГДА показываем "Аноним"
+                '👤 Аноним' as from_username
             FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id
             WHERE q.id = $1
             AND (q.is_deleted = FALSE OR q.is_deleted IS NULL)
         `, [req.params.id]);
@@ -770,12 +984,11 @@ app.post('/api/questions', async (req, res) => {
             }
         }
         
-        // Создаем вопрос
-        const isAnonymous = !from_user_id;
+        // Создаем вопрос (ВСЕГДА как анонимный)
         const result = await db.query(
             `INSERT INTO questions (from_user_id, to_user_id, text, is_anonymous) 
-             VALUES ($1, $2, $3, $4) RETURNING id, text, created_at, is_anonymous`,
-            [from_user_id || null, to_user_id, text, isAnonymous]
+             VALUES ($1, $2, $3, TRUE) RETURNING id, text, created_at, is_anonymous`,
+            [from_user_id || null, to_user_id, text]
         );
         
         const question = result.rows[0];
@@ -948,7 +1161,7 @@ app.post('/api/share-to-chat', async (req, res) => {
         const questionResult = await db.query(`
             SELECT q.* 
             FROM questions q
-            WHERE q.id = $1 AND q.to_user_id = $2 AND q.is_answered = TRUE`,
+            WHERE q.id = $1 AND q.to_user_id = $2 AND q.is_answered = TRUE AND (q.is_deleted = FALSE OR q.is_deleted IS NULL)`,
             [questionId, userId]
         );
         

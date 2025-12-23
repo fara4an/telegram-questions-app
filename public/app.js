@@ -3,6 +3,7 @@ let tg = window.Telegram?.WebApp;
 let userId = null;
 let username = null;
 let currentQuestionId = null;
+let currentReportedUserId = null;
 let isAdmin = false;
 let isSuperAdmin = false;
 const botUsername = 'questionstgbot';
@@ -282,9 +283,8 @@ function renderUsersList(users) {
             <table class="users-table">
                 <thead>
                     <tr>
-                        <th>Аватар</th>
-                        <th>Имя</th>
                         <th>ID</th>
+                        <th>Имя</th>
                         <th>Статус</th>
                         <th>Действия</th>
                     </tr>
@@ -296,30 +296,32 @@ function renderUsersList(users) {
                         
                         return `
                         <tr>
+                            <td><code>${user.telegram_id}</code></td>
                             <td>
-                                <div class="mini-avatar" style="
-                                    width: 32px;
-                                    height: 32px;
-                                    background: ${isBlocked ? 'var(--tg-danger)' : 'linear-gradient(135deg, var(--tg-accent-color), #6c5ce7)'};
-                                    border-radius: 50%;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                    color: white;
-                                    font-weight: 600;
-                                    font-size: 14px;
-                                ">
-                                    ${(user.username || user.first_name || 'U').charAt(0).toUpperCase()}
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div class="mini-avatar" style="
+                                        width: 32px;
+                                        height: 32px;
+                                        background: ${isBlocked ? 'var(--tg-danger)' : 'linear-gradient(135deg, var(--tg-accent-color), #6c5ce7)'};
+                                        border-radius: 50%;
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        color: white;
+                                        font-weight: 600;
+                                        font-size: 14px;
+                                    ">
+                                        ${(user.username || user.first_name || 'U').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        ${user.username ? '@' + user.username : user.first_name || 'Пользователь'}
+                                        ${user.is_super_admin ? '👑' : user.is_admin ? '🛠️' : ''}
+                                    </div>
                                 </div>
                             </td>
                             <td>
-                                ${user.username ? '@' + user.username : user.first_name || 'Пользователь'}
-                                ${user.is_super_admin ? '👑' : user.is_admin ? '🛠️' : ''}
-                            </td>
-                            <td><code>${user.telegram_id}</code></td>
-                            <td>
                                 <span style="
-                                    padding: 2px 6px;
+                                    padding: 4px 8px;
                                     border-radius: 12px;
                                     font-size: 12px;
                                     font-weight: 600;
@@ -338,8 +340,8 @@ function renderUsersList(users) {
                                 <div style="display: flex; gap: 5px;">
                                     ${isSuperAdmin ? `
                                     <button class="btn-action" onclick="openBlockUserModal(${user.telegram_id}, '${user.username || user.first_name || 'Пользователь'}')" 
-                                            style="background: var(--tg-danger); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                                        ${isBlocked ? 'Разблокировать' : 'Блокировать'}
+                                            style="background: ${isBlocked ? 'var(--tg-success)' : 'var(--tg-danger)'}; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px; border: none; cursor: pointer;">
+                                        ${isBlocked ? '✅ Разблокировать' : '🚫 Блокировать'}
                                     </button>
                                     ` : ''}
                                 </div>
@@ -405,18 +407,20 @@ function renderReportsList(reports) {
                         <div><strong>На пользователя:</strong> ${report.reported_username || report.reported_first_name || `ID: ${report.reported_user_id}`}</div>
                     </div>
                     
-                    ${report.status === 'pending' && isSuperAdmin ? `
+                    ${report.status === 'pending' && (isSuperAdmin || isAdmin) ? `
                     <div style="display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap;">
                         <button class="btn btn-success" style="flex: 1; padding: 8px; font-size: 12px;" 
-                                onclick="updateReportStatus(${report.id}, 'resolved', '')">
+                                onclick="updateReportStatus(${report.id}, 'resolved', 'Жалоба рассмотрена')">
                             ✅ Решено
                         </button>
+                        ${isSuperAdmin ? `
                         <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 12px;" 
-                                onclick="openBlockFromReportModal(${report.id}, ${report.reported_user_id}, '${report.reported_username || 'Пользователь'}')">
+                                onclick="openBlockFromReportModal(${report.id}, ${report.reported_user_id}, '${report.reported_username || report.reported_first_name || 'Пользователь'}')">
                             🚫 Блокировать
                         </button>
+                        ` : ''}
                         <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;" 
-                                onclick="updateReportStatus(${report.id}, 'rejected', '')">
+                                onclick="updateReportStatus(${report.id}, 'rejected', 'Жалоба отклонена')">
                             ❌ Отклонить
                         </button>
                     </div>
@@ -459,23 +463,23 @@ function openDataDeletionModal() {
     setTimeout(() => document.getElementById('dataDeletionModal').classList.add('active'), 10);
 }
 
-function openBlockUserModal(userId, username) {
-    document.getElementById('blockUserId').value = userId;
-    document.getElementById('blockUsername').textContent = username;
+function openBlockUserModal(targetUserId, targetUsername) {
+    document.getElementById('blockUserId').value = targetUserId;
+    document.getElementById('blockUsername').textContent = targetUsername;
     document.getElementById('blockUserModal').style.display = 'flex';
     setTimeout(() => document.getElementById('blockUserModal').classList.add('active'), 10);
 }
 
-function openBlockFromReportModal(reportId, userId, username) {
+function openBlockFromReportModal(reportId, targetUserId, targetUsername) {
     document.getElementById('blockReportId').value = reportId;
-    document.getElementById('blockFromReportUserId').value = userId;
-    document.getElementById('blockFromReportUsername').textContent = username;
+    document.getElementById('blockFromReportUserId').value = targetUserId;
+    document.getElementById('blockFromReportUsername').textContent = targetUsername;
     document.getElementById('blockFromReportModal').style.display = 'flex';
     setTimeout(() => document.getElementById('blockFromReportModal').classList.add('active'), 10);
 }
 
 async function blockUser() {
-    const userId = document.getElementById('blockUserId').value;
+    const targetUserId = document.getElementById('blockUserId').value;
     const durationHours = document.getElementById('blockDuration').value;
     const isPermanent = document.getElementById('blockPermanent').checked;
     const reason = document.getElementById('blockReason').value;
@@ -493,7 +497,7 @@ async function blockUser() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 adminId: userId,
-                userId: userId,
+                userId: targetUserId,
                 durationHours: isPermanent ? null : durationHours,
                 isPermanent: isPermanent,
                 reason: reason
@@ -516,7 +520,7 @@ async function blockUser() {
 
 async function blockFromReport() {
     const reportId = document.getElementById('blockReportId').value;
-    const userId = document.getElementById('blockFromReportUserId').value;
+    const targetUserId = document.getElementById('blockFromReportUserId').value;
     const durationHours = document.getElementById('blockFromReportDuration').value;
     const isPermanent = document.getElementById('blockFromReportPermanent').checked;
     const reason = document.getElementById('blockFromReportReason').value;
@@ -534,7 +538,7 @@ async function blockFromReport() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 adminId: userId,
-                userId: userId,
+                userId: targetUserId,
                 durationHours: isPermanent ? null : durationHours,
                 isPermanent: isPermanent,
                 reason: reason
@@ -756,6 +760,130 @@ function closeReportModal() {
     }
 }
 
+// ========== КНОПКИ ДЛЯ ОТПРАВКИ ВОПРОСОВ ==========
+
+function openReportActionModal(questionId = null, reportedUserId = null) {
+    currentQuestionId = questionId;
+    currentReportedUserId = reportedUserId;
+    
+    const modal = document.getElementById('reportActionModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('active'), 10);
+    }
+}
+
+function closeReportActionModal() {
+    const modal = document.getElementById('reportActionModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
+}
+
+function openQuickBlockModal() {
+    closeReportActionModal();
+    
+    document.getElementById('quickBlockUserId').value = currentReportedUserId || '';
+    document.getElementById('quickBlockQuestionId').value = currentQuestionId || '';
+    
+    const modal = document.getElementById('quickBlockModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('active'), 10);
+    }
+}
+
+function closeQuickBlockModal() {
+    const modal = document.getElementById('quickBlockModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
+}
+
+function setQuickBlockDuration(hours, permanent = false) {
+    const durationInput = document.getElementById('quickBlockDuration');
+    const buttons = document.querySelectorAll('#quickBlockModal .btn-secondary, #quickBlockModal .btn-danger');
+    
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    if (permanent) {
+        durationInput.value = 'permanent';
+        event.target.classList.add('active');
+    } else {
+        durationInput.value = hours;
+        event.target.classList.add('active');
+    }
+}
+
+async function submitQuickBlock() {
+    const targetUserId = document.getElementById('quickBlockUserId').value;
+    const questionId = document.getElementById('quickBlockQuestionId').value;
+    const reason = document.getElementById('quickBlockReason').value;
+    const duration = document.getElementById('quickBlockDuration').value;
+    
+    if (!targetUserId && !questionId) {
+        showNotification('Не указан пользователь или вопрос для блокировки', 'warning');
+        return;
+    }
+    
+    const isPermanent = duration === 'permanent';
+    const durationHours = isPermanent ? null : parseInt(duration);
+    
+    try {
+        showNotification('🚫 Блокировка пользователя...', 'info');
+        
+        let userIdToBlock = targetUserId;
+        
+        if (!userIdToBlock && questionId) {
+            userIdToBlock = await getUserIdFromQuestion(questionId);
+        }
+        
+        if (!userIdToBlock) {
+            showNotification('Не удалось определить пользователя для блокировки', 'error');
+            return;
+        }
+        
+        const response = await fetch('/api/admin/block-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adminId: userId,
+                userId: userIdToBlock,
+                durationHours: durationHours,
+                isPermanent: isPermanent,
+                reason: reason
+            })
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Пользователь заблокирован', 'success');
+            closeQuickBlockModal();
+            await loadAllData();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка быстрой блокировки:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
+async function getUserIdFromQuestion(questionId) {
+    try {
+        const response = await fetch(`/api/question/${questionId}`);
+        if (response.ok) {
+            const question = await response.json();
+            return question.from_user_id;
+        }
+        return null;
+    } catch (error) {
+        return null;
+    }
+}
+
 // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
 function getElement(id) {
@@ -812,6 +940,10 @@ async function initUserData() {
         username = 'Демо пользователь';
     }
     
+    // Сохраняем userId глобально
+    window.userId = userId;
+    window.currentUserId = userId;
+    
     try {
         const response = await fetch(`/api/user/role/${userId}`);
         if (response.ok) {
@@ -847,6 +979,7 @@ async function initUI() {
     
     if (isAdmin || isSuperAdmin) {
         addAdminTab();
+        addAdminModals();
     }
     
     setupTabs();
@@ -883,8 +1016,9 @@ function addAdminTab() {
         `;
         tabContent.appendChild(adminPage);
     }
-    
-    // Добавляем модальные окна для админ-панели
+}
+
+function addAdminModals() {
     const modals = `
         <!-- Модалка блокировки пользователя -->
         <div id="blockUserModal" class="modal-overlay" style="display: none;">
@@ -1043,11 +1177,8 @@ function addAdminTab() {
                         </p>
                         
                         <div style="display: flex; flex-direction: column; gap: 15px;">
-                            <button class="btn btn-primary" onclick="openBlockUserModal(0, 'выбрать пользователя')">
-                                🚫 Блокировать пользователя
-                            </button>
-                            <button class="btn btn-danger" onclick="openDataDeletionModal()">
-                                🗑️ Удалить данные
+                            <button class="btn btn-primary" onclick="openDataDeletionModal()">
+                                🗑️ Удалить данные пользователя
                             </button>
                             <button class="btn btn-secondary" onclick="closeModal('userManagementModal')">
                                 Закрыть
@@ -1057,42 +1188,130 @@ function addAdminTab() {
                 </div>
             </div>
         </div>
+        
+        <!-- Модалка для кнопки "Пожаловаться" -->
+        <div id="reportActionModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h3>⚠️ Отправить жалобу</h3>
+                    <button class="btn-close" onclick="closeReportActionModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="report-options">
+                        <button class="btn btn-secondary" onclick="openReportModal(currentQuestionId, currentReportedUserId); closeReportActionModal();" style="width: 100%; margin-bottom: 10px;">
+                            📋 Заполнить форму жалобы
+                        </button>
+                        ${isSuperAdmin ? `
+                        <button class="btn btn-danger" onclick="openQuickBlockModal()" style="width: 100%;">
+                            🚫 Быстрая блокировка пользователя
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeReportActionModal()">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Модалка быстрой блокировки -->
+        <div id="quickBlockModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h3>🚫 Быстрая блокировка</h3>
+                    <button class="btn-close" onclick="closeQuickBlockModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="quickBlockUserId">
+                    <input type="hidden" id="quickBlockQuestionId">
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 10px;">Причина блокировки:</label>
+                        <select id="quickBlockReason" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--tg-input-bg); color: var(--tg-text-color); border: 1px solid var(--tg-border-color);">
+                            <option value="spam">Спам</option>
+                            <option value="harassment">Оскорбления</option>
+                            <option value="threats">Угрозы</option>
+                            <option value="hate_speech">Разжигание ненависти</option>
+                            <option value="other">Другое</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 10px;">Длительность:</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="setQuickBlockDuration(24)" style="flex: 1;">24ч</button>
+                            <button class="btn btn-secondary" onclick="setQuickBlockDuration(168)" style="flex: 1;">7д</button>
+                            <button class="btn btn-secondary" onclick="setQuickBlockDuration(720)" style="flex: 1;">30д</button>
+                            <button class="btn btn-danger" onclick="setQuickBlockDuration(null, true)" style="flex: 1;">Навсегда</button>
+                        </div>
+                        <input type="hidden" id="quickBlockDuration" value="24">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeQuickBlockModal()">
+                        Отмена
+                    </button>
+                    <button class="btn btn-danger" onclick="submitQuickBlock()">
+                        🚫 Заблокировать
+                    </button>
+                </div>
+            </div>
+        </div>
     `;
     
     document.body.insertAdjacentHTML('beforeend', modals);
 }
 
 function toggleBlockDuration(show) {
-    document.getElementById('blockPermanent').checked = !show;
-    document.getElementById('durationField').style.display = show ? 'block' : 'none';
+    const blockPermanent = document.getElementById('blockPermanent');
+    const blockDuration = document.getElementById('blockDuration');
+    
+    if (blockPermanent) blockPermanent.checked = !show;
+    if (blockDuration) blockDuration.disabled = !show;
+    if (show) {
+        document.getElementById('durationField').style.display = 'block';
+    } else {
+        document.getElementById('durationField').style.display = 'none';
+    }
 }
 
 function toggleBlockFromReportDuration(show) {
-    document.getElementById('blockFromReportPermanent').checked = !show;
-    document.getElementById('durationFromReportField').style.display = show ? 'block' : 'none';
+    const blockFromReportPermanent = document.getElementById('blockFromReportPermanent');
+    const blockFromReportDuration = document.getElementById('blockFromReportDuration');
+    
+    if (blockFromReportPermanent) blockFromReportPermanent.checked = !show;
+    if (blockFromReportDuration) blockFromReportDuration.disabled = !show;
+    if (show) {
+        document.getElementById('durationFromReportField').style.display = 'block';
+    } else {
+        document.getElementById('durationFromReportField').style.display = 'none';
+    }
 }
 
 function setupReportHandlers() {
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('report-btn-small')) {
-            const questionId = e.target.getAttribute('data-question-id');
-            const reportedUserId = e.target.getAttribute('data-user-id');
-            openReportModal(questionId, reportedUserId);
+        // Обработка кнопки "Пожаловаться" в вопросах
+        if (e.target.classList.contains('report-btn') || e.target.classList.contains('report-btn-small') || 
+            (e.target.closest && (e.target.closest('.report-btn') || e.target.closest('.report-btn-small')))) {
+            
+            const target = e.target.closest('.report-btn, .report-btn-small') || e.target;
+            const questionId = target.getAttribute('data-question-id');
+            const reportedUserId = target.getAttribute('data-user-id');
+            
+            // Открываем модалку выбора действия
+            openReportActionModal(questionId, reportedUserId);
             return;
         }
         
-        if (e.target.classList.contains('report-btn')) {
-            const questionId = e.target.getAttribute('data-question-id');
-            const reportedUserId = e.target.getAttribute('data-user-id');
-            openReportModal(questionId, reportedUserId);
-            return;
-        }
-        
+        // Обработка отправки жалобы
         if (e.target.id === 'submitReportBtn' || e.target.closest('#submitReportBtn')) {
             submitReport();
             return;
         }
         
+        // Обработка закрытия модалок жалоб
         if (e.target.id === 'closeReportModal' || e.target.closest('#closeReportModal')) {
             closeReportModal();
             return;
@@ -1120,8 +1339,6 @@ async function loadAllData() {
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error);
         updateStatus('🟡 Демо-режим');
-        await showTestData();
-        showNotification('Используем тестовые данные', 'warning');
     }
 }
 
@@ -1202,7 +1419,7 @@ function renderIncomingQuestions(questions) {
                     <button class="btn btn-primary" onclick="shareAnswer(${q.id})">
                         📤 Поделиться ответом
                     </button>
-                    <button class="btn btn-secondary report-btn-small" 
+                    <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
                             data-user-id="">
                         ⚠️ Пожаловаться
@@ -1216,7 +1433,7 @@ function renderIncomingQuestions(questions) {
                     <button class="btn btn-success" onclick="openAnswerModal(${q.id})">
                         ✍️ Ответить
                     </button>
-                    <button class="btn btn-secondary report-btn-small" 
+                    <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
                             data-user-id="">
                         ⚠️ Пожаловаться
@@ -1262,7 +1479,7 @@ function renderSentQuestions(questions) {
                     <div class="answer-content">${escapeHtml(q.answer)}</div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-secondary report-btn-small" 
+                    <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
                             data-user-id="${q.to_user_id}">
                         ⚠️ Пожаловаться
@@ -1273,7 +1490,7 @@ function renderSentQuestions(questions) {
                 </div>
             ` : `
                 <div class="btn-group">
-                    <button class="btn btn-secondary report-btn-small" 
+                    <button class="btn btn-secondary report-btn" 
                             data-question-id="${q.id}" 
                             data-user-id="${q.to_user_id}">
                         ⚠️ Пожаловаться
@@ -1668,3 +1885,9 @@ window.deleteUserData = deleteUserData;
 window.closeModal = closeModal;
 window.toggleBlockDuration = toggleBlockDuration;
 window.toggleBlockFromReportDuration = toggleBlockFromReportDuration;
+window.openReportActionModal = openReportActionModal;
+window.closeReportActionModal = closeReportActionModal;
+window.openQuickBlockModal = openQuickBlockModal;
+window.closeQuickBlockModal = closeQuickBlockModal;
+window.setQuickBlockDuration = setQuickBlockDuration;
+window.submitQuickBlock = submitQuickBlock;
