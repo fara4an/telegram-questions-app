@@ -53,8 +53,8 @@ async function initDB() {
                 answer TEXT,
                 is_answered BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                answered_at TIMESTAMP,
-                is_anonymous BOOLEAN DEFAULT TRUE
+                answered_at TIMESTAMP
+                -- is_anonymous будет добавлена ниже если не существует
             );
             
             -- Таблица реферальных ссылок
@@ -81,6 +81,16 @@ async function initDB() {
                 resolved_at TIMESTAMP
             );
         `);
+        
+        // ДОБАВЛЯЕМ КОЛОНКУ is_anonymous ЕСЛИ ОНА НЕ СУЩЕСТВУЕТ
+        try {
+            await db.query(`
+                ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT TRUE;
+            `);
+            console.log('✅ Колонка is_anonymous проверена/добавлена');
+        } catch (columnError) {
+            console.log('ℹ️ Колонка is_anonymous уже существует или ошибка:', columnError.message);
+        }
         
         console.log('✅ Таблицы созданы/проверены');
         
@@ -479,29 +489,52 @@ app.get('/api/tos', (req, res) => {
     });
 });
 
-// ========== API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО ==========
+// ========== API ДЛЯ ВОПРОСОВ - ИСПРАВЛЕНО С РЕЗЕРВНЫМ ВАРИАНТОМ ==========
+
+// ИСПРАВЛЕННЫЙ ВАРИАНТ С ПРОВЕРКОЙ КОЛОНКИ
 app.get('/api/questions/incoming/:userId', async (req, res) => {
     try {
-        const result = await db.query(`
-            SELECT 
-                q.id,
-                q.text,
-                q.answer,
-                q.is_answered,
-                q.created_at,
-                q.answered_at,
-                -- Показываем имя пользователя если вопрос не анонимный
-                CASE 
-                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
-                    WHEN u.username IS NOT NULL THEN '@' || u.username
-                    WHEN u.first_name IS NOT NULL THEN u.first_name
-                    ELSE '👤 Пользователь'
-                END as from_username
-            FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id
-            WHERE q.to_user_id = $1 
-            ORDER BY q.created_at DESC
-        `, [req.params.userId]);
+        // Пытаемся выполнить запрос с колонкой is_anonymous
+        let result;
+        try {
+            result = await db.query(`
+                SELECT 
+                    q.id,
+                    q.text,
+                    q.answer,
+                    q.is_answered,
+                    q.created_at,
+                    q.answered_at,
+                    -- Показываем имя пользователя если вопрос не анонимный
+                    CASE 
+                        WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
+                        WHEN u.username IS NOT NULL THEN '@' || u.username
+                        WHEN u.first_name IS NOT NULL THEN u.first_name
+                        ELSE '👤 Пользователь'
+                    END as from_username
+                FROM questions q
+                LEFT JOIN users u ON q.from_user_id = u.telegram_id
+                WHERE q.to_user_id = $1 
+                ORDER BY q.created_at DESC
+            `, [req.params.userId]);
+        } catch (error) {
+            // Если ошибка из-за отсутствия колонки is_anonymous, используем резервный вариант
+            console.log('Используем резервный запрос для входящих вопросов:', error.message);
+            result = await db.query(`
+                SELECT 
+                    q.id,
+                    q.text,
+                    q.answer,
+                    q.is_answered,
+                    q.created_at,
+                    q.answered_at,
+                    -- В резервном варианте все вопросы считаем анонимными
+                    '👤 Аноним' as from_username
+                FROM questions q
+                WHERE q.to_user_id = $1 
+                ORDER BY q.created_at DESC
+            `, [req.params.userId]);
+        }
         
         res.json(result.rows);
     } catch (error) {
@@ -542,25 +575,44 @@ app.get('/api/questions/sent/:userId', async (req, res) => {
 
 app.get('/api/question/:id', async (req, res) => {
     try {
-        const result = await db.query(`
-            SELECT 
-                q.id,
-                q.text,
-                q.answer,
-                q.is_answered,
-                q.created_at,
-                q.answered_at,
-                -- Скрываем информацию об отправителе для анонимных вопросов
-                CASE 
-                    WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
-                    WHEN u.username IS NOT NULL THEN '@' || u.username
-                    WHEN u.first_name IS NOT NULL THEN u.first_name
-                    ELSE '👤 Пользователь'
-                END as from_username
-            FROM questions q
-            LEFT JOIN users u ON q.from_user_id = u.telegram_id
-            WHERE q.id = $1
-        `, [req.params.id]);
+        // Пытаемся выполнить запрос с колонкой is_anonymous
+        let result;
+        try {
+            result = await db.query(`
+                SELECT 
+                    q.id,
+                    q.text,
+                    q.answer,
+                    q.is_answered,
+                    q.created_at,
+                    q.answered_at,
+                    -- Скрываем информацию об отправителе для анонимных вопросов
+                    CASE 
+                        WHEN q.is_anonymous = TRUE THEN '👤 Аноним'
+                        WHEN u.username IS NOT NULL THEN '@' || u.username
+                        WHEN u.first_name IS NOT NULL THEN u.first_name
+                        ELSE '👤 Пользователь'
+                    END as from_username
+                FROM questions q
+                LEFT JOIN users u ON q.from_user_id = u.telegram_id
+                WHERE q.id = $1
+            `, [req.params.id]);
+        } catch (error) {
+            // Резервный вариант без колонки is_anonymous
+            console.log('Используем резервный запрос для вопроса:', error.message);
+            result = await db.query(`
+                SELECT 
+                    q.id,
+                    q.text,
+                    q.answer,
+                    q.is_answered,
+                    q.created_at,
+                    q.answered_at,
+                    '👤 Аноним' as from_username
+                FROM questions q
+                WHERE q.id = $1
+            `, [req.params.id]);
+        }
         
         if (result.rows.length > 0) {
             res.json(result.rows[0]);
@@ -573,6 +625,7 @@ app.get('/api/question/:id', async (req, res) => {
     }
 });
 
+// ИСПРАВЛЕННЫЙ МЕТОД СОЗДАНИЯ ВОПРОСА С РЕЗЕРВНЫМ ВАРИАНТОМ
 app.post('/api/questions', async (req, res) => {
     try {
         const { from_user_id, to_user_id, text, referral_code } = req.body;
@@ -622,11 +675,24 @@ app.post('/api/questions', async (req, res) => {
         
         // Создаем вопрос с флагом анонимности
         const isAnonymous = !from_user_id;
-        const result = await db.query(
-            `INSERT INTO questions (from_user_id, to_user_id, text, is_anonymous) 
-             VALUES ($1, $2, $3, $4) RETURNING id, text, created_at, is_anonymous`,
-            [from_user_id || null, to_user_id, text, isAnonymous]
-        );
+        let result;
+        
+        try {
+            // Пытаемся создать вопрос с колонкой is_anonymous
+            result = await db.query(
+                `INSERT INTO questions (from_user_id, to_user_id, text, is_anonymous) 
+                 VALUES ($1, $2, $3, $4) RETURNING id, text, created_at, is_anonymous`,
+                [from_user_id || null, to_user_id, text, isAnonymous]
+            );
+        } catch (error) {
+            // Если колонки is_anonymous нет, создаем вопрос без нее
+            console.log('Создаем вопрос без колонки is_anonymous:', error.message);
+            result = await db.query(
+                `INSERT INTO questions (from_user_id, to_user_id, text) 
+                 VALUES ($1, $2, $3) RETURNING id, text, created_at`,
+                [from_user_id || null, to_user_id, text]
+            );
+        }
         
         const question = result.rows[0];
         
@@ -657,12 +723,16 @@ app.post('/api/questions', async (req, res) => {
         
         res.status(201).json({ 
             success: true, 
-            question: question 
+            question: question,
+            message: 'Вопрос успешно отправлен'
         });
         
     } catch (error) {
         console.error('Error creating question:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            details: error.message 
+        });
     }
 });
 
