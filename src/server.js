@@ -25,7 +25,7 @@ async function initDB() {
         await db.connect();
         console.log('✅ База данных подключена');
         
-        // Создаем таблицы с новой структурой
+        // Создаем таблицы если они не существуют
         await db.query(`
             -- Таблица пользователей
             CREATE TABLE IF NOT EXISTS users (
@@ -36,9 +36,6 @@ async function initDB() {
                 last_name VARCHAR(255),
                 is_admin BOOLEAN DEFAULT FALSE,
                 is_super_admin BOOLEAN DEFAULT FALSE,
-                agreed_tos BOOLEAN DEFAULT FALSE,
-                subscribed_channel BOOLEAN DEFAULT FALSE,
-                last_check TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 invited_by BIGINT,
                 referral_code VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -83,6 +80,9 @@ async function initDB() {
         
         console.log('✅ Таблицы созданы/проверены');
         
+        // Добавляем недостающие колонки в таблицу users
+        await addMissingColumns();
+        
         // Проверяем и создаем главного админа
         await ensureMainAdmin();
         
@@ -90,6 +90,198 @@ async function initDB() {
         console.error('❌ Ошибка БД:', error.message);
     }
 }
+
+// Функция для добавления недостающих колонок
+async function addMissingColumns() {
+    try {
+        console.log('🔍 Проверяем наличие колонок в таблице users...');
+        
+        // Проверяем существующие колонки
+        const columns = await db.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users'
+        `);
+        
+        const existingColumns = columns.rows.map(row => row.column_name);
+        console.log('Существующие колонки:', existingColumns);
+        
+        // Добавляем недостающие колонки
+        if (!existingColumns.includes('agreed_tos')) {
+            console.log('➕ Добавляем колонку agreed_tos...');
+            await db.query(`ALTER TABLE users ADD COLUMN agreed_tos BOOLEAN DEFAULT FALSE`);
+            console.log('✅ Колонка agreed_tos добавлена');
+        }
+        
+        if (!existingColumns.includes('subscribed_channel')) {
+            console.log('➕ Добавляем колонку subscribed_channel...');
+            await db.query(`ALTER TABLE users ADD COLUMN subscribed_channel BOOLEAN DEFAULT FALSE`);
+            console.log('✅ Колонка subscribed_channel добавлена');
+        }
+        
+        if (!existingColumns.includes('last_check')) {
+            console.log('➕ Добавляем колонку last_check...');
+            await db.query(`ALTER TABLE users ADD COLUMN last_check TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+            console.log('✅ Колонка last_check добавлена');
+        }
+        
+        console.log('✅ Структура таблицы users обновлена');
+        
+    } catch (error) {
+        console.error('❌ Ошибка добавления колонок:', error.message);
+    }
+}
+
+// Проверка подписки на канал (с обработкой ошибок)
+async function checkChannelSubscription(userId) {
+    try {
+        console.log(`🔍 Проверяем подписку пользователя ${userId} на канал...`);
+        
+        const member = await bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
+        const isSubscribed = member.status === 'member' || member.status === 'administrator' || member.status === 'creator';
+        
+        console.log(`📢 Статус подписки пользователя ${userId}: ${isSubscribed}`);
+        
+        // Обновляем статус в БД
+        await db.query(
+            `UPDATE users SET subscribed_channel = $1, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $2`,
+            [isSubscribed, userId]
+        ).catch(err => {
+            console.error('Ошибка обновления статуса подписки:', err.message);
+        });
+        
+        return isSubscribed;
+    } catch (error) {
+        console.error('Ошибка проверки подписки:', error.message);
+        
+        // Если ошибка, пробуем обновить статус на false
+        try {
+            await db.query(
+                `UPDATE users SET subscribed_channel = FALSE, last_check = CURRENT_TIMESTAMP WHERE telegram_id = $1`,
+                [userId]
+            );
+        } catch (dbError) {
+            console.error('Ошибка установки статуса подписки:', dbError.message);
+        }
+        
+        return false;
+    }
+}
+
+// Проверка согласия с TOS (с обработкой ошибок)
+async function checkTOSAgreement(userId) {
+    try {
+        console.log(`📝 Проверяем TOS для пользователя ${userId}...`);
+        
+        const result = await db.query(
+            `SELECT agreed_tos FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        
+        if (result.rows.length === 0) {
+            console.log(`👤 Пользователь ${userId} не найден, создаем запись...`);
+            // Создаем нового пользователя
+            await db.query(
+                `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) VALUES ($1, FALSE, FALSE)`,
+                [userId]
+            ).catch(err => {
+                console.error('Ошибка создания пользователя:', err.message);
+            });
+            return false;
+        }
+        
+        const hasAgreed = result.rows[0].agreed_tos;
+        console.log(`✅ Пользователь ${userId} TOS: ${hasAgreed}`);
+        return hasAgreed;
+    } catch (error) {
+        console.error('Ошибка проверки TOS:', error.message);
+        return false;
+    }
+}
+
+// Проверка доступа пользователя (с обработкой ошибок)
+async function verifyUserAccess(userId) {
+    try {
+        console.log(`🔐 Проверяем доступ пользователя ${userId}...`);
+        
+        // Проверяем, есть ли пользователь в базе
+        const userExists = await db.query(
+            `SELECT telegram_id FROM users WHERE telegram_id = $1`,
+            [userId]
+        );
+        
+        if (userExists.rows.length === 0) {
+            // Создаем пользователя если его нет
+            console.log(`👤 Создаем запись для пользователя ${userId}...`);
+            await db.query(
+                `INSERT INTO users (telegram_id, agreed_tos, subscribed_channel) 
+                 VALUES ($1, FALSE, FALSE) 
+                 ON CONFLICT (telegram_id) DO NOTHING`,
+                [userId]
+            ).catch(err => {
+                console.error('Ошибка создания пользователя:', err.message);
+            });
+        }
+        
+        // Проверяем подписку и TOS
+        const [isSubscribed, agreedTOS] = await Promise.all([
+            checkChannelSubscription(userId),
+            checkTOSAgreement(userId)
+        ]);
+        
+        console.log(`📊 Результат проверки для ${userId}: subscribed=${isSubscribed}, tos=${agreedTOS}`);
+        
+        return { isSubscribed, agreedTOS };
+        
+    } catch (error) {
+        console.error('❌ Критическая ошибка проверки доступа:', error.message);
+        return { isSubscribed: false, agreedTOS: false };
+    }
+}
+
+// Middleware для проверки доступа (с обработкой ошибок)
+bot.use(async (ctx, next) => {
+    // Пропускаем команды /start, /help, /tos, /report, /fulltos без проверки
+    const allowedCommands = ['start', 'help', 'tos', 'report', 'fulltos'];
+    const command = ctx.message?.text?.split(' ')[0]?.replace('/', '');
+    
+    if (allowedCommands.includes(command)) {
+        return next();
+    }
+    
+    // Для всех других команд проверяем доступ
+    try {
+        const userId = ctx.from.id;
+        const access = await verifyUserAccess(userId);
+        
+        if (!access.isSubscribed) {
+            await ctx.reply(
+                `❌ *Доступ ограничен*\n\n` +
+                `Для использования бота необходимо подписаться на канал:\n` +
+                `@questionstg\n\n` +
+                `После подписки отправьте команду /start`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+        
+        if (!access.agreedTOS) {
+            await ctx.reply(
+                `📝 *Требуется подтверждение*\n\n` +
+                `Для использования бота необходимо принять Пользовательское соглашение.\n\n` +
+                `Отправьте команду /tos для ознакомления и подтверждения.`,
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+        
+        next();
+    } catch (error) {
+        console.error('❌ Ошибка в middleware проверки доступа:', error.message);
+        // В случае ошибки пропускаем проверку
+        next();
+    }
+});
 
 async function ensureMainAdmin() {
     try {
