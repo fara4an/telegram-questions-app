@@ -507,7 +507,7 @@ app.post('/api/share-to-chat', async (req, res) => {
         try {
             botInfo = await bot.telegram.getMe();
         } catch (error) {
-            botInfo = { username: 'dota2servicebot' };
+            botInfo = { username: 'questionstgbot' };
         }
         
         const userLink = `https://t.me/${botInfo.username}?start=ask_${userId}`;

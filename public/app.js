@@ -5,7 +5,7 @@ let username = null;
 let currentQuestionId = null;
 let isAdmin = false;
 let isSuperAdmin = false;
-const botUsername = 'dota2servicebot';
+const botUsername = 'questionstgbot';
 
 // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
