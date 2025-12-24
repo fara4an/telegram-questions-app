@@ -513,7 +513,8 @@ app.get('/api/admin/reports', async (req, res) => {
     }
 });
 
-// Блокировка пользователя
+// ========== API для блокировки пользователя ==========
+
 app.post('/api/admin/block-user', async (req, res) => {
     try {
         const { adminId, userId: targetUserId, durationHours, isPermanent, reason } = req.body;
@@ -524,6 +525,7 @@ app.post('/api/admin/block-user', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны обязательные параметры' });
         }
         
+        // Проверяем права администратора
         const adminResult = await db.query(
             `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
             [adminId]
@@ -576,7 +578,8 @@ app.post('/api/admin/block-user', async (req, res) => {
     }
 });
 
-// Разблокировка пользователя
+// ========== API для разблокировки пользователя ==========
+
 app.post('/api/admin/unblock-user', async (req, res) => {
     try {
         const { adminId, userId: targetUserId } = req.body;
@@ -585,6 +588,7 @@ app.post('/api/admin/unblock-user', async (req, res) => {
             return res.status(400).json({ error: 'Не указаны обязательные параметры' });
         }
         
+        // Проверяем права администратора
         const adminResult = await db.query(
             `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
             [adminId]
@@ -594,6 +598,21 @@ app.post('/api/admin/unblock-user', async (req, res) => {
             return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
         }
         
+        // Проверяем, существует ли пользователь
+        const userResult = await db.query(
+            `SELECT is_blocked FROM users WHERE telegram_id = $1`,
+            [targetUserId]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+        
+        if (!userResult.rows[0].is_blocked) {
+            return res.status(400).json({ error: 'Пользователь не заблокирован' });
+        }
+        
+        // Разблокируем пользователя
         await db.query(`
             UPDATE users 
             SET is_blocked = FALSE, 
@@ -602,8 +621,12 @@ app.post('/api/admin/unblock-user', async (req, res) => {
             WHERE telegram_id = $1
         `, [targetUserId]);
         
+        // Отправляем уведомление пользователю
         try {
-            await bot.telegram.sendMessage(targetUserId, '✅ Ваш аккаунт был разблокирован администратором.');
+            await bot.telegram.sendMessage(targetUserId, 
+                '✅ Ваш аккаунт был разблокирован администратором.\n\n' +
+                'Теперь вы снова можете использовать сервис.'
+            );
         } catch (error) {
             console.error('Ошибка отправки уведомления о разблокировке:', error.message);
         }
@@ -619,170 +642,8 @@ app.post('/api/admin/unblock-user', async (req, res) => {
     }
 });
 
-// Удаление данных
-app.post('/api/admin/delete-data', async (req, res) => {
-    try {
-        const { adminId, userId: targetUserId, deleteType } = req.body;
-        
-        console.log('Удаление данных:', { adminId, targetUserId, deleteType });
-        
-        if (!adminId || !targetUserId || !deleteType) {
-            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
-        }
-        
-        const adminResult = await db.query(
-            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
-            [adminId]
-        );
-        
-        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
-            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
-        }
-        
-        if (deleteType === 'questions') {
-            // Удаляем все вопросы пользователя
-            await db.query(
-                `UPDATE questions SET is_deleted = TRUE WHERE from_user_id = $1 OR to_user_id = $1`,
-                [targetUserId]
-            );
-            // Обновляем жалобы связанные с этим пользователем
-            await db.query(
-                `UPDATE reports SET status = 'resolved', admin_notes = 'Данные удалены' WHERE reported_user_id = $1 OR reporter_id = $1`,
-                [targetUserId]
-            );
-        } else if (deleteType === 'account') {
-            // Удаляем все данные пользователя
-            await db.query(
-                `DELETE FROM questions WHERE from_user_id = $1 OR to_user_id = $1`,
-                [targetUserId]
-            );
-            await db.query(
-                `DELETE FROM reports WHERE reporter_id = $1 OR reported_user_id = $1`,
-                [targetUserId]
-            );
-            await db.query(
-                `DELETE FROM users WHERE telegram_id = $1`,
-                [targetUserId]
-            );
-        }
-        
-        res.json({
-            success: true,
-            message: `Данные типа '${deleteType}' удалены для пользователя ${targetUserId}`
-        });
-        
-    } catch (error) {
-        console.error('Error deleting data:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+// ========== API для получения причин жалоб ==========
 
-// Обновление статуса жалобы
-app.post('/api/admin/update-report', async (req, res) => {
-    try {
-        const { adminId, reportId, status, actionTaken, adminNotes } = req.body;
-        
-        if (!adminId || !reportId || !status) {
-            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
-        }
-        
-        const adminResult = await db.query(
-            `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
-            [adminId]
-        );
-        
-        if (adminResult.rows.length === 0 || (!adminResult.rows[0].is_super_admin && !adminResult.rows[0].is_admin)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-        
-        await db.query(`
-            UPDATE reports 
-            SET status = $1, 
-                admin_id = $2,
-                action_taken = $3,
-                admin_notes = $4,
-                resolved_at = CASE WHEN $1 != 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END
-            WHERE id = $5
-        `, [status, adminId, actionTaken || null, adminNotes || null, reportId]);
-        
-        res.json({
-            success: true,
-            message: 'Статус жалобы обновлен'
-        });
-        
-    } catch (error) {
-        console.error('Error updating report:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ========== ПОЛЬЗОВАТЕЛЬСКИЕ API ==========
-
-app.get('/api/user/access/:userId', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        const access = await verifyUserAccess(userId);
-        
-        const userResult = await db.query(
-            `SELECT username, agreed_tos, subscribed_channel, is_blocked, blocked_until FROM users WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        const userData = userResult.rows.length > 0 ? userResult.rows[0] : {
-            username: null,
-            agreed_tos: false,
-            subscribed_channel: false,
-            is_blocked: false,
-            blocked_until: null
-        };
-        
-        res.json({
-            ...access,
-            user: userData
-        });
-        
-    } catch (error) {
-        console.error('Error checking user access:', error.message);
-        res.json({
-            isSubscribed: false,
-            agreedTOS: false,
-            isBlocked: false,
-            user: {
-                username: null,
-                agreed_tos: false,
-                subscribed_channel: false,
-                is_blocked: false,
-                blocked_until: null
-            }
-        });
-    }
-});
-
-app.post('/api/user/agree-tos', async (req, res) => {
-    try {
-        const { userId } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({ error: 'Не указан userId' });
-        }
-        
-        await db.query(
-            `UPDATE users SET agreed_tos = TRUE WHERE telegram_id = $1`,
-            [userId]
-        );
-        
-        res.json({
-            success: true,
-            message: 'Пользовательское соглашение принято'
-        });
-        
-    } catch (error) {
-        console.error('Error agreeing to TOS:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Получение причин для жалоб
 app.get('/api/report/reasons', (req, res) => {
     res.json({
         success: true,
@@ -798,74 +659,89 @@ app.get('/api/report/reasons', (req, res) => {
     });
 });
 
-app.post('/api/user/report', async (req, res) => {
+// ========== Обновленный обработчик команды /tos ==========
+
+bot.command('tos', async (ctx) => {
+    const tosText = `*📝 ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
+                   `*1. Общие положения*\n` +
+                   `1.1. Сервис предоставляет возможность задавать анонимные вопросы.\n` +
+                   `1.2. Используя сервис, вы подтверждаете, что вам есть 16 лет.\n\n` +
+                   `*2. Обязанности пользователя*\n` +
+                   `2.1. Не нарушать законодательство РФ.\n` +
+                   `2.2. Не публиковать запрещенный контент.\n` +
+                   `2.3. Не оскорблять других пользователей.\n\n` +
+                   `*3. Анонимность*\n` +
+                   `3.1. Вопросы задаются анонимно.\n` +
+                   `3.2. Мы не раскрываем данные отправителей.\n\n` +
+                   `*4. Ответственность*\n` +
+                   `4.1. Вы несете ответственность за свои вопросы.\n` +
+                   `4.2. За нарушения - блокировка аккаунта.\n\n` +
+                   `*5. Контакты*\n` +
+                   `По вопросам: @questionstg\n\n` +
+                   `*Принимая соглашение, вы подтверждаете, что ознакомились и согласны со всеми пунктами.*`;
+    
+    await ctx.reply(tosText, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: '✅ Принять соглашение',
+                        callback_data: 'accept_tos_direct'
+                    }
+                ],
+                [
+                    {
+                        text: '📱 Открыть приложение',
+                        web_app: { url: WEB_APP_URL }
+                    }
+                ]
+            ]
+        }
+    });
+});
+
+// Обработчик принятия соглашения напрямую
+bot.action('accept_tos_direct', async (ctx) => {
     try {
-        const { userId, reportedUserId, questionId, reason, details } = req.body;
+        await ctx.answerCbQuery();
         
-        if (!userId || !reason) {
-            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
-        }
+        const userId = ctx.from.id;
         
-        // Проверяем доступ пользователя
-        const access = await verifyUserAccess(userId);
-        if (!access.isSubscribed || !access.agreedTOS) {
-            return res.status(403).json({ error: 'Доступ запрещен. Проверьте подписку и соглашение.' });
-        }
-        
-        // Увеличиваем счетчик жалоб для вопроса
-        if (questionId) {
-            try {
-                await db.query(
-                    `UPDATE questions SET report_count = COALESCE(report_count, 0) + 1 WHERE id = $1`,
-                    [questionId]
-                );
-            } catch (error) {
-                console.log('Не удалось обновить счетчик жалоб:', error.message);
-            }
-        }
-        
-        // Сохраняем жалобу
-        const result = await db.query(`
-            INSERT INTO reports (reporter_id, reported_user_id, question_id, reason, details) 
-            VALUES ($1, $2, $3, $4, $5) 
-            RETURNING id
-        `, [userId, reportedUserId || null, questionId || null, reason, details || null]);
-        
-        // Уведомляем админов
-        const admins = await db.query(
-            `SELECT telegram_id FROM users WHERE (is_admin = TRUE OR is_super_admin = TRUE) AND telegram_id != $1`,
+        await db.query(
+            `UPDATE users SET agreed_tos = TRUE WHERE telegram_id = $1`,
             [userId]
         );
         
-        const reportId = result.rows[0].id;
-        
-        for (const admin of admins.rows) {
-            try {
-                await bot.telegram.sendMessage(admin.telegram_id,
-                    `⚠️ *Новая жалоба #${reportId}*\n\n` +
-                    `👤 Отправитель: ${userId}\n` +
-                    `👥 На пользователя: ${reportedUserId || 'не указан'}\n` +
-                    `📝 Вопрос: ${questionId || 'не указан'}\n` +
-                    `📋 Причина: ${reason}\n` +
-                    `📄 Детали: ${details || 'не указаны'}\n\n` +
-                    `🕐 ${new Date().toLocaleString()}`,
-                    { parse_mode: 'Markdown' }
-                );
-            } catch (error) {
-                console.error('Ошибка уведомления админа:', error.message);
+        await ctx.reply(
+            `✅ *Соглашение принято!*\n\n` +
+            `Теперь вы можете использовать все возможности сервиса.\n\n` +
+            `Нажмите /start для продолжения.`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: '🚀 Начать',
+                                callback_data: 'start_after_tos'
+                            }
+                        ]
+                    ]
+                }
             }
-        }
-        
-        res.json({
-            success: true,
-            reportId: reportId,
-            message: 'Жалоба отправлена на рассмотрение'
-        });
+        );
         
     } catch (error) {
-        console.error('Error submitting report:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Ошибка принятия TOS:', error);
+        await ctx.answerCbQuery('❌ Произошла ошибка, попробуйте позже');
     }
+});
+
+// Обработчик старта после принятия соглашения
+bot.action('start_after_tos', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply('Нажмите /start для продолжения работы с ботом.');
 });
 
 // ========== API ДЛЯ ВОПРОСОВ ==========
