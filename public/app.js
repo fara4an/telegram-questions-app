@@ -138,63 +138,50 @@ async function acceptTOS() {
     }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ - работает в Telegram WebApp
 function openTOSinBot() {
-    // Полный текст соглашения
-    const tosText = `📜 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*
-
-*1. Возрастное ограничение*
-   • Вы должны быть старше 16 лет для использования сервиса.
-
-*2. Запрещенный контент*
-   • Угрозы, оскорбления, домогательства
-   • Разжигание ненависти, дискриминация
-   • Спам, реклама, мошенничество
-   • Порнографический контент
-
-*3. Ваша ответственность*
-   • Вы несете ответственность за содержание своих вопросов и ответов.
-   • Запрещено выдавать себя за других людей.
-
-*4. Анонимность*
-   • Отправители остаются анонимными
-   • Администраторы видят статистику, но не приватные сообщения
-   • Вопросы хранятся на сервере для модерации
-
-*5. Модерация*
-   • Администраторы могут блокировать пользователей
-   • Могут удалять вопросы и ответы
-   • Пользователи могут жаловаться на контент
-
-*6. Согласие*
-   Используя сервис, вы соглашаетесь с этими правилами.
-
-*Нажимая "Принять", вы подтверждаете согласие со всеми пунктами.*`;
-
-    // Показываем соглашение в попапе Telegram WebApp
-    if (tg && tg.showPopup) {
-        tg.showPopup({
-            title: '📜 Пользовательское соглашение',
-            message: tosText,
-            buttons: [
-                { type: 'ok', text: '✅ Принять' },
-                { type: 'close', text: '✖️ Закрыть' }
-            ]
-        }, function(buttonId) {
-            if (buttonId === 'ok') {
-                acceptTOS();
-            }
-        });
+    if (tg && tg.openLink) {
+        // Открываем бота для ознакомления с соглашением
+        tg.openLink(`https://t.me/${botUsername}?start=tos_${userId}`);
     } else {
-        // Для десктопа или если WebApp не поддерживает showPopup
-        if (tg && tg.openTelegramLink) {
-            // Открываем бота с текстом соглашения
-            const message = encodeURIComponent(tosText);
-            tg.openTelegramLink(`https://t.me/${botUsername}?start=tos_${userId}`);
+        // Показываем соглашение в попапе
+        const tosText = `📜 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
+            `*1. Возрастное ограничение*\n` +
+            `• Вы должны быть старше 16 лет\n\n` +
+            `*2. Запрещенный контент*\n` +
+            `• Угрозы, оскорбления, домогательства\n` +
+            `• Разжигание ненависти, дискриминация\n` +
+            `• Спам, реклама, мошенничество\n` +
+            `• Порнографический контент\n\n` +
+            `*3. Ваша ответственность*\n` +
+            `• Вы отвечаете за свой контент\n` +
+            `• Запрещено выдавать себя за других\n\n` +
+            `*4. Анонимность*\n` +
+            `• Отправители остаются анонимными\n` +
+            `• Администраторы видят статистику\n` +
+            `• Вопросы хранятся для модерации\n\n` +
+            `*5. Модерация*\n` +
+            `• Админы могут блокировать пользователей\n` +
+            `• Могут удалять вопросы и ответы\n` +
+            `• Пользователи могут жаловаться\n\n` +
+            `*6. Согласие*\n` +
+            `Используя сервис, вы соглашаетесь с правилами.`;
+        
+        if (tg && tg.showPopup) {
+            tg.showPopup({
+                title: '📜 Пользовательское соглашение',
+                message: tosText,
+                buttons: [
+                    { type: 'ok', text: '✅ Принять' },
+                    { type: 'close', text: '✖️ Закрыть' }
+                ]
+            }, function(buttonId) {
+                if (buttonId === 'ok') {
+                    acceptTOS();
+                }
+            });
         } else {
-            // Простая альтернатива
-            const shouldAccept = confirm(tosText + '\n\nПринять пользовательское соглашение?');
-            if (shouldAccept) {
+            // Для десктопа
+            if (confirm(tosText + '\n\nПринять пользовательское соглашение?')) {
                 acceptTOS();
             }
         }
@@ -459,7 +446,7 @@ function renderReportsList(reports) {
                         <div><strong>Причина:</strong> ${getReasonLabel(report.reason)}</div>
                         ${report.details ? `<div><strong>Детали:</strong> ${report.details}</div>` : ''}
                         <div><strong>Жалобу отправил:</strong> ${report.reporter_username || `ID: ${report.reporter_id}`}</div>
-                        <div><strong>На пользователя:</strong> ${report.reported_username || report.reported_first_name || `ID: ${report.reported_user_id}`}</div>
+                        <div><strong>На пользователя:</strong> ${report.reported_username || report.reported_first_name || `ID: ${report.reported_user_id || 'не указан'}`}</div>
                     </div>
                     
                     ${report.status === 'pending' && (isSuperAdmin || isAdmin) ? `
@@ -468,7 +455,7 @@ function renderReportsList(reports) {
                                 onclick="updateReportStatus(${report.id}, 'resolved', 'Жалоба рассмотрена')">
                             ✅ Решено
                         </button>
-                        ${isSuperAdmin ? `
+                        ${isSuperAdmin && report.reported_user_id ? `
                         <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 12px;" 
                                 onclick="openBlockFromReportModal(${report.id}, ${report.reported_user_id}, '${(report.reported_username || report.reported_first_name || 'Пользователь').replace(/'/g, "\\'")}')">
                             🚫 Блокировать
@@ -536,6 +523,17 @@ function openBlockUserModal(targetUserId, targetUsername) {
 }
 
 function openBlockFromReportModal(reportId, targetUserId, targetUsername) {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
+    if (!targetUserId) {
+        showNotification('❌ Не указан ID пользователя для блокировки', 'error');
+        return;
+    }
+    
     document.getElementById('blockReportId').value = reportId;
     document.getElementById('blockFromReportUserId').value = targetUserId;
     document.getElementById('blockFromReportUsername').textContent = targetUsername;
@@ -553,8 +551,41 @@ function openBlockFromReportModal(reportId, targetUserId, targetUsername) {
     document.getElementById('blockFromReportReason').value = '';
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ - без использования checked
+async function updateReportStatus(reportId, status, notes) {
+    try {
+        showNotification('📤 Обновление статуса...', 'info');
+        
+        const response = await fetch('/api/admin/update-report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adminId: userId,
+                reportId: reportId,
+                status: status,
+                adminNotes: notes || ''
+            })
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Статус обновлен', 'success');
+            await loadAdminPanel();
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка обновления статуса:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
 async function blockUser() {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
     const targetUserId = document.getElementById('blockUserId').value;
     const durationHours = document.getElementById('blockDuration').value;
     const reason = document.getElementById('blockReason').value;
@@ -604,8 +635,13 @@ async function blockUser() {
     }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ - без использования checked
 async function blockFromReport() {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
     const reportId = document.getElementById('blockReportId').value;
     const targetUserId = document.getElementById('blockFromReportUserId').value;
     const durationHours = document.getElementById('blockFromReportDuration').value;
@@ -659,35 +695,13 @@ async function blockFromReport() {
     }
 }
 
-async function updateReportStatus(reportId, status, notes) {
-    try {
-        showNotification('📤 Обновление статуса...', 'info');
-        
-        const response = await fetch('/api/admin/update-report', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                adminId: userId,
-                reportId: reportId,
-                status: status,
-                adminNotes: notes || ''
-            })
-        });
-        
-        if (response.ok) {
-            showNotification('✅ Статус обновлен', 'success');
-            await loadAdminPanel();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка сервера');
-        }
-    } catch (error) {
-        console.error('Ошибка обновления статуса:', error);
-        showNotification('❌ ' + error.message, 'error');
-    }
-}
-
 async function deleteUserData() {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
     const targetUserId = document.getElementById('deleteUserId').value;
     const deleteType = document.getElementById('deleteType').value;
     
@@ -911,6 +925,12 @@ function setQuickBlockDuration(hours, permanent = false) {
 }
 
 async function submitQuickBlock() {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
     const targetUserId = document.getElementById('quickBlockUserId').value;
     const questionId = document.getElementById('quickBlockQuestionId').value;
     const reason = document.getElementById('quickBlockReason').value;
@@ -1037,6 +1057,7 @@ async function initUserData() {
     window.userId = userId;
     window.currentUserId = userId;
     
+    // Проверяем роль пользователя
     try {
         const response = await fetch(`/api/user/role/${userId}`);
         if (response.ok) {
@@ -1359,30 +1380,28 @@ function addAdminModals() {
     document.body.insertAdjacentHTML('beforeend', modals);
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ ОБРАБОТКИ КНОПКИ "ПОЖАЛОВАТЬСЯ" - работает для всех пользователей
 function setupReportHandlers() {
     document.addEventListener('click', function(e) {
-        // Обработка кнопки "Пожаловаться" в вопросах
-        if (e.target.classList.contains('report-btn') || 
-            e.target.classList.contains('report-btn-small') || 
-            (e.target.closest && (e.target.closest('.report-btn') || e.target.closest('.report-btn-small')))) {
-            
+        // ИСПРАВЛЕНИЕ: правильный селектор для кнопок "Пожаловаться"
+        if (e.target.matches('.report-btn, .report-btn *')) {
             e.preventDefault();
             e.stopPropagation();
             
-            const target = e.target.closest('.report-btn, .report-btn-small') || e.target;
-            const questionId = target.getAttribute('data-question-id');
-            const reportedUserId = target.getAttribute('data-user-id');
+            const btn = e.target.closest('.report-btn') || e.target;
+            const questionId = btn.getAttribute('data-question-id');
+            const reportedUserId = btn.getAttribute('data-user-id');
             
             console.log('Кнопка "Пожаловаться" нажата:', { 
                 questionId, 
-                reportedUserId,
-                isAdmin: isAdmin,
-                isSuperAdmin: isSuperAdmin
+                reportedUserId 
             });
             
-            // Открываем соответствующую модалку
-            openReportActionModal(questionId, reportedUserId);
+            // Открываем модалку жалобы
+            if (isAdmin || isSuperAdmin) {
+                openReportActionModal(questionId, reportedUserId);
+            } else {
+                openReportModal(questionId, reportedUserId);
+            }
             return;
         }
         
@@ -1471,7 +1490,6 @@ async function loadSentQuestions() {
     }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕНДЕРИНГА ВХОДЯЩИХ ВОПРОСОВ
 function renderIncomingQuestions(questions) {
     const container = getElement('incoming-list');
     if (!container) return;
@@ -1496,7 +1514,7 @@ function renderIncomingQuestions(questions) {
                 <div class="question-date">${formatDate(q.created_at)}</div>
                 <div class="question-from">
                     ${q.from_username}
-                    ${q.report_count > 0 ? `<span style="color: var(--tg-warning); margin-left: 5px;">⚠️ ${q.report_count}</span>` : ''}
+                    ${q.report_count && q.report_count > 0 ? `<span style="color: var(--tg-warning); margin-left: 5px;">⚠️ ${q.report_count}</span>` : ''}
                 </div>
             </div>
             <div class="question-text">${escapeHtml(q.text)}</div>
@@ -1539,7 +1557,6 @@ function renderIncomingQuestions(questions) {
     container.innerHTML = html;
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕНДЕРИНГА ОТПРАВЛЕННЫХ ВОПРОСОВ
 function renderSentQuestions(questions) {
     const container = getElement('sent-list');
     if (!container) return;

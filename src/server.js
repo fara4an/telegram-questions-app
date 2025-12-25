@@ -707,54 +707,48 @@ app.post('/api/admin/delete-data', async (req, res) => {
 // Обновление статуса жалобы (ИСПРАВЛЕННЫЙ МЕТОД)
 app.post('/api/admin/update-report', async (req, res) => {
     try {
-        const { adminId, reportId, status, actionTaken, adminNotes } = req.body;
-        
-        console.log('Обновление статуса жалобы:', { adminId, reportId, status, actionTaken, adminNotes });
-        
+        const { adminId, reportId, status, adminNotes } = req.body;
+
         if (!adminId || !reportId || !status) {
-            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+            return res.status(400).json({ error: 'Недостаточно данных' });
         }
-        
-        const adminResult = await db.query(
-            `SELECT is_super_admin, is_admin FROM users WHERE telegram_id = $1`,
+
+        const adminCheck = await db.query(
+            `SELECT is_admin, is_super_admin FROM users WHERE telegram_id = $1`,
             [adminId]
         );
-        
-        if (adminResult.rows.length === 0 || (!adminResult.rows[0].is_super_admin && !adminResult.rows[0].is_admin)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
+
+        if (
+            adminCheck.rows.length === 0 ||
+            (!adminCheck.rows[0].is_admin && !adminCheck.rows[0].is_super_admin)
+        ) {
+            return res.status(403).json({ error: 'Нет прав' });
         }
-        
-        // Проверяем существование жалобы
-        const reportResult = await db.query(
-            `SELECT id FROM reports WHERE id = $1`,
+
+        const reportCheck = await db.query(
+            `SELECT * FROM reports WHERE id = $1`,
             [reportId]
         );
-        
-        if (reportResult.rows.length === 0) {
+
+        if (reportCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Жалоба не найдена' });
         }
-        
+
         await db.query(`
-            UPDATE reports 
-            SET status = $1, 
+            UPDATE reports
+            SET
+                status = $1,
                 admin_id = $2,
-                action_taken = $3,
-                admin_notes = $4,
-                resolved_at = CASE WHEN $1 != 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END
-            WHERE id = $5
-        `, [status, adminId, actionTaken || null, adminNotes || null, reportId]);
-        
-        res.json({
-            success: true,
-            message: 'Статус жалобы обновлен'
-        });
-        
-    } catch (error) {
-        console.error('Error updating report:', error.message);
-        res.status(500).json({ 
-            error: 'Internal server error',
-            details: error.message 
-        });
+                admin_notes = $3,
+                resolved_at = NOW()
+            WHERE id = $4
+        `, [status, adminId, adminNotes || null, reportId]);
+
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error('update-report error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
