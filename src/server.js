@@ -704,10 +704,12 @@ app.post('/api/admin/delete-data', async (req, res) => {
     }
 });
 
-// Обновление статуса жалобы
+// Обновление статуса жалобы (ИСПРАВЛЕННЫЙ МЕТОД)
 app.post('/api/admin/update-report', async (req, res) => {
     try {
         const { adminId, reportId, status, actionTaken, adminNotes } = req.body;
+        
+        console.log('Обновление статуса жалобы:', { adminId, reportId, status, actionTaken, adminNotes });
         
         if (!adminId || !reportId || !status) {
             return res.status(400).json({ error: 'Не указаны обязательные параметры' });
@@ -720,6 +722,16 @@ app.post('/api/admin/update-report', async (req, res) => {
         
         if (adminResult.rows.length === 0 || (!adminResult.rows[0].is_super_admin && !adminResult.rows[0].is_admin)) {
             return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        // Проверяем существование жалобы
+        const reportResult = await db.query(
+            `SELECT id FROM reports WHERE id = $1`,
+            [reportId]
+        );
+        
+        if (reportResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Жалоба не найдена' });
         }
         
         await db.query(`
@@ -739,7 +751,10 @@ app.post('/api/admin/update-report', async (req, res) => {
         
     } catch (error) {
         console.error('Error updating report:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            details: error.message 
+        });
     }
 });
 

@@ -138,10 +138,10 @@ async function acceptTOS() {
     }
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ - работает в Telegram WebApp
 function openTOSinBot() {
-    const tosText = `
-📜 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*
+    // Полный текст соглашения
+    const tosText = `📜 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*
 
 *1. Возрастное ограничение*
    • Вы должны быть старше 16 лет для использования сервиса.
@@ -171,6 +171,7 @@ function openTOSinBot() {
 
 *Нажимая "Принять", вы подтверждаете согласие со всеми пунктами.*`;
 
+    // Показываем соглашение в попапе Telegram WebApp
     if (tg && tg.showPopup) {
         tg.showPopup({
             title: '📜 Пользовательское соглашение',
@@ -185,10 +186,17 @@ function openTOSinBot() {
             }
         });
     } else {
-        // Для десктопа
-        const shouldAccept = confirm(tosText + '\n\nПринять пользовательское соглашение?');
-        if (shouldAccept) {
-            acceptTOS();
+        // Для десктопа или если WebApp не поддерживает showPopup
+        if (tg && tg.openTelegramLink) {
+            // Открываем бота с текстом соглашения
+            const message = encodeURIComponent(tosText);
+            tg.openTelegramLink(`https://t.me/${botUsername}?start=tos_${userId}`);
+        } else {
+            // Простая альтернатива
+            const shouldAccept = confirm(tosText + '\n\nПринять пользовательское соглашение?');
+            if (shouldAccept) {
+                acceptTOS();
+            }
         }
     }
 }
@@ -515,6 +523,16 @@ function openBlockUserModal(targetUserId, targetUsername) {
     document.getElementById('blockUsername').textContent = targetUsername;
     document.getElementById('blockUserModal').style.display = 'flex';
     setTimeout(() => document.getElementById('blockUserModal').classList.add('active'), 10);
+    
+    // Сбрасываем значения
+    const blockTypeTemporary = document.querySelector('input[name="blockType"][value="temporary"]');
+    const blockTypePermanent = document.querySelector('input[name="blockType"][value="permanent"]');
+    
+    if (blockTypeTemporary) blockTypeTemporary.checked = true;
+    if (blockTypePermanent) blockTypePermanent.checked = false;
+    
+    document.getElementById('blockDuration').value = '24';
+    document.getElementById('blockReason').value = '';
 }
 
 function openBlockFromReportModal(reportId, targetUserId, targetUsername) {
@@ -523,16 +541,37 @@ function openBlockFromReportModal(reportId, targetUserId, targetUsername) {
     document.getElementById('blockFromReportUsername').textContent = targetUsername;
     document.getElementById('blockFromReportModal').style.display = 'flex';
     setTimeout(() => document.getElementById('blockFromReportModal').classList.add('active'), 10);
+    
+    // Сбрасываем значения
+    const blockTypeTemporary = document.querySelector('input[name="blockFromReportType"][value="temporary"]');
+    const blockTypePermanent = document.querySelector('input[name="blockFromReportType"][value="permanent"]');
+    
+    if (blockTypeTemporary) blockTypeTemporary.checked = true;
+    if (blockTypePermanent) blockTypePermanent.checked = false;
+    
+    document.getElementById('blockFromReportDuration').value = '24';
+    document.getElementById('blockFromReportReason').value = '';
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ - без использования checked
 async function blockUser() {
     const targetUserId = document.getElementById('blockUserId').value;
     const durationHours = document.getElementById('blockDuration').value;
-    const isPermanent = document.getElementById('blockPermanent').checked;
     const reason = document.getElementById('blockReason').value;
+    
+    // Проверяем тип блокировки
+    const blockTypeTemporary = document.querySelector('input[name="blockType"][value="temporary"]:checked');
+    const blockTypePermanent = document.querySelector('input[name="blockType"][value="permanent"]:checked');
+    
+    const isPermanent = blockTypePermanent ? true : false;
     
     if (!reason) {
         showNotification('Укажите причину блокировки', 'warning');
+        return;
+    }
+    
+    if (!isPermanent && (!durationHours || durationHours < 1)) {
+        showNotification('Укажите длительность блокировки', 'warning');
         return;
     }
     
@@ -565,15 +604,26 @@ async function blockUser() {
     }
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ - без использования checked
 async function blockFromReport() {
     const reportId = document.getElementById('blockReportId').value;
     const targetUserId = document.getElementById('blockFromReportUserId').value;
     const durationHours = document.getElementById('blockFromReportDuration').value;
-    const isPermanent = document.getElementById('blockFromReportPermanent').checked;
     const reason = document.getElementById('blockFromReportReason').value;
+    
+    // Проверяем тип блокировки
+    const blockTypeTemporary = document.querySelector('input[name="blockFromReportType"][value="temporary"]:checked');
+    const blockTypePermanent = document.querySelector('input[name="blockFromReportType"][value="permanent"]:checked');
+    
+    const isPermanent = blockTypePermanent ? true : false;
     
     if (!reason) {
         showNotification('Укажите причину блокировки', 'warning');
+        return;
+    }
+    
+    if (!isPermanent && (!durationHours || durationHours < 1)) {
+        showNotification('Укажите длительность блокировки', 'warning');
         return;
     }
     
@@ -594,17 +644,7 @@ async function blockFromReport() {
         
         if (response.ok) {
             // Обновляем статус жалобы
-            await fetch('/api/admin/update-report', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    adminId: userId,
-                    reportId: reportId,
-                    status: 'resolved',
-                    actionTaken: 'user_blocked',
-                    adminNotes: `Пользователь заблокирован. Причина: ${reason}`
-                })
-            });
+            await updateReportStatus(reportId, 'resolved', `Пользователь заблокирован. Причина: ${reason}`);
             
             showNotification('✅ Пользователь заблокирован, жалоба обработана', 'success');
             closeModal('blockFromReportModal');
@@ -812,6 +852,12 @@ function closeReportModal() {
 function openReportActionModal(questionId = null, reportedUserId = null) {
     currentQuestionId = questionId;
     currentReportedUserId = reportedUserId;
+    
+    // ИСПРАВЛЕНИЕ: Открываем форму жалобы сразу для обычных пользователей
+    if (!isAdmin && !isSuperAdmin) {
+        openReportModal(questionId, reportedUserId);
+        return;
+    }
     
     const modal = document.getElementById('reportActionModal');
     if (modal) {
@@ -1082,11 +1128,11 @@ function addAdminModals() {
                         <label style="display: block; margin-bottom: 10px;">Тип блокировки:</label>
                         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
                             <label style="display: flex; align-items: center; gap: 5px;">
-                                <input type="radio" name="blockType" value="temporary" checked onclick="toggleBlockDuration(true)">
+                                <input type="radio" name="blockType" value="temporary" checked>
                                 Временная
                             </label>
                             <label style="display: flex; align-items: center; gap: 5px;">
-                                <input type="radio" name="blockType" value="permanent" onclick="toggleBlockDuration(false)">
+                                <input type="radio" name="blockType" value="permanent">
                                 Навсегда
                             </label>
                         </div>
@@ -1132,11 +1178,11 @@ function addAdminModals() {
                         <label style="display: block; margin-bottom: 10px;">Тип блокировки:</label>
                         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
                             <label style="display: flex; align-items: center; gap: 5px;">
-                                <input type="radio" name="blockFromReportType" value="temporary" checked onclick="toggleBlockFromReportDuration(true)">
+                                <input type="radio" name="blockFromReportType" value="temporary" checked>
                                 Временная
                             </label>
                             <label style="display: flex; align-items: center; gap: 5px;">
-                                <input type="radio" name="blockFromReportType" value="permanent" onclick="toggleBlockFromReportDuration(false)">
+                                <input type="radio" name="blockFromReportType" value="permanent">
                                 Навсегда
                             </label>
                         </div>
@@ -1236,7 +1282,8 @@ function addAdminModals() {
             </div>
         </div>
         
-        <!-- Модалка для кнопки "Пожаловаться" -->
+        <!-- Модалка для кнопки "Пожаловаться" (только для админов) -->
+        ${isAdmin || isSuperAdmin ? `
         <div id="reportActionModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 400px;">
                 <div class="modal-header">
@@ -1306,38 +1353,13 @@ function addAdminModals() {
                 </div>
             </div>
         </div>
+        ` : ''}
     `;
     
     document.body.insertAdjacentHTML('beforeend', modals);
 }
 
-function toggleBlockDuration(show) {
-    const blockPermanent = document.getElementById('blockPermanent');
-    const blockDuration = document.getElementById('blockDuration');
-    
-    if (blockPermanent) blockPermanent.checked = !show;
-    if (blockDuration) blockDuration.disabled = !show;
-    if (show) {
-        document.getElementById('durationField').style.display = 'block';
-    } else {
-        document.getElementById('durationField').style.display = 'none';
-    }
-}
-
-function toggleBlockFromReportDuration(show) {
-    const blockFromReportPermanent = document.getElementById('blockFromReportPermanent');
-    const blockFromReportDuration = document.getElementById('blockFromReportDuration');
-    
-    if (blockFromReportPermanent) blockFromReportPermanent.checked = !show;
-    if (blockFromReportDuration) blockFromReportDuration.disabled = !show;
-    if (show) {
-        document.getElementById('durationFromReportField').style.display = 'block';
-    } else {
-        document.getElementById('durationFromReportField').style.display = 'none';
-    }
-}
-
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ ОБРАБОТКИ КНОПКИ "ПОЖАЛОВАТЬСЯ"
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ ОБРАБОТКИ КНОПКИ "ПОЖАЛОВАТЬСЯ" - работает для всех пользователей
 function setupReportHandlers() {
     document.addEventListener('click', function(e) {
         // Обработка кнопки "Пожаловаться" в вопросах
@@ -1345,26 +1367,42 @@ function setupReportHandlers() {
             e.target.classList.contains('report-btn-small') || 
             (e.target.closest && (e.target.closest('.report-btn') || e.target.closest('.report-btn-small')))) {
             
+            e.preventDefault();
+            e.stopPropagation();
+            
             const target = e.target.closest('.report-btn, .report-btn-small') || e.target;
             const questionId = target.getAttribute('data-question-id');
             const reportedUserId = target.getAttribute('data-user-id');
             
-            console.log('Кнопка "Пожаловаться" нажата:', { questionId, reportedUserId });
+            console.log('Кнопка "Пожаловаться" нажата:', { 
+                questionId, 
+                reportedUserId,
+                isAdmin: isAdmin,
+                isSuperAdmin: isSuperAdmin
+            });
             
-            // Открываем модалку выбора действия
+            // Открываем соответствующую модалку
             openReportActionModal(questionId, reportedUserId);
             return;
         }
         
         // Обработка отправки жалобы
         if (e.target.id === 'submitReportBtn' || e.target.closest('#submitReportBtn')) {
+            e.preventDefault();
             submitReport();
             return;
         }
         
         // Обработка закрытия модалок жалоб
-        if (e.target.id === 'closeReportModal' || e.target.closest('#closeReportModal')) {
+        if (e.target.classList.contains('close-btn') && e.target.closest('#reportModal')) {
+            e.preventDefault();
             closeReportModal();
+            return;
+        }
+        
+        if (e.target.classList.contains('close-btn') && e.target.closest('#reportActionModal')) {
+            e.preventDefault();
+            closeReportActionModal();
             return;
         }
     });
@@ -1936,8 +1974,6 @@ window.blockFromReport = blockFromReport;
 window.updateReportStatus = updateReportStatus;
 window.deleteUserData = deleteUserData;
 window.closeModal = closeModal;
-window.toggleBlockDuration = toggleBlockDuration;
-window.toggleBlockFromReportDuration = toggleBlockFromReportDuration;
 window.openReportActionModal = openReportActionModal;
 window.closeReportActionModal = closeReportActionModal;
 window.openQuickBlockModal = openQuickBlockModal;

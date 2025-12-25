@@ -698,5 +698,40 @@
             }
         });
     </script>
+    <script>
+// Дополнительный обработчик для кнопки "Пожаловаться"
+document.addEventListener('DOMContentLoaded', function() {
+    // Перехватываем все клики для кнопок "Пожаловаться"
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('.report-btn, .report-btn *')) {
+            const btn = e.target.closest('.report-btn') || e.target;
+            const questionId = btn.getAttribute('data-question-id');
+            const reportedUserId = btn.getAttribute('data-user-id');
+            
+            if (questionId || reportedUserId) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Проверяем, есть ли у нас функции
+                if (typeof openReportActionModal === 'function') {
+                    openReportActionModal(questionId, reportedUserId);
+                } else if (typeof openReportModal === 'function') {
+                    openReportModal(questionId, reportedUserId);
+                }
+            }
+        }
+    });
+    
+    // Инициализация счетчика символов для деталей жалобы
+    const detailsInput = document.getElementById('reportDetails');
+    const charCount = document.getElementById('reportDetailsCharCount');
+    
+    if (detailsInput && charCount) {
+        detailsInput.addEventListener('input', function() {
+            charCount.textContent = this.value.length;
+        });
+    }
+});
+</script>
 </body>
 </html>
