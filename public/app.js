@@ -389,6 +389,9 @@ function renderUsersList(users) {
                         const isBlocked = user.is_blocked && 
                             (!user.blocked_until || new Date(user.blocked_until) > new Date());
                         
+                        const displayName = (user.username || user.first_name || 'Пользователь');
+                        const escapedName = displayName.replace(/'/g, "\\'");
+                        
                         return `
                         <tr>
                             <td><code>${user.telegram_id}</code></td>
@@ -406,7 +409,7 @@ function renderUsersList(users) {
                                         font-weight: 600;
                                         font-size: 14px;
                                     ">
-                                        ${(user.username || user.first_name || 'U').charAt(0).toUpperCase()}
+                                        ${displayName.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
                                         ${user.username ? '@' + user.username : user.first_name || 'Пользователь'}
@@ -434,7 +437,7 @@ function renderUsersList(users) {
                             <td>
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                                     ${isSuperAdmin ? `
-                                    <button class="btn-action" onclick="${isBlocked ? 'unblockUser(' + user.telegram_id + ')' : 'openBlockUserModal(' + user.telegram_id + ', \"' + (user.username || user.first_name || 'Пользователь').replace(/'/g, "\\'") + '\")'}" 
+                                    <button class="btn-action" onclick="${isBlocked ? 'unblockUser(' + user.telegram_id + ')' : 'openBlockUserModal(' + user.telegram_id + ', \\'' + escapedName + '\\')'}" 
                                             style="background: ${isBlocked ? 'var(--tg-success)' : 'var(--tg-danger)'}; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px; border: none; cursor: pointer; margin: 2px;">
                                         ${isBlocked ? '✅ Разблокировать' : '🚫 Блокировать'}
                                     </button>
@@ -463,6 +466,9 @@ function renderReportsList(reports) {
             ${reports.map(report => {
                 const statusColor = report.status === 'pending' ? 'var(--tg-warning)' : 
                                  report.status === 'resolved' ? 'var(--tg-success)' : 'var(--tg-danger)';
+                
+                const reportedName = report.reported_username || report.reported_first_name || 'Пользователь';
+                const escapedName = reportedName.replace(/'/g, "\\'");
                 
                 return `
                 <div class="report-item" style="
@@ -511,7 +517,7 @@ function renderReportsList(reports) {
                         </button>
                         ${isSuperAdmin && report.reported_user_id ? `
                         <button class="btn btn-danger" style="flex: 1; padding: 8px; font-size: 12px;" 
-                                onclick="openBlockFromReportModal(${report.id}, ${report.reported_user_id}, '${(report.reported_username || report.reported_first_name || 'Пользователь').replace(/'/g, "\\'")}')">
+                                onclick="openBlockFromReportModal(${report.id}, ${report.reported_user_id}, '${escapedName}')">
                             🚫 Блокировать
                         </button>
                         ` : ''}
@@ -880,16 +886,19 @@ async function openReportModal(questionId = null, reportedUserId = null) {
             reasonsList.appendChild(reasonItem);
         });
         
-        // Сбрасываем форму (УДАЛЯЕМ ПОЛЕ ДЛЯ ID ПОЛЬЗОВАТЕЛЯ)
+        // Сбрасываем форму
         const questionIdInput = document.getElementById('reportQuestionId');
         const detailsInput = document.getElementById('reportDetails');
         
         if (questionIdInput) questionIdInput.value = questionId || '';
         if (detailsInput) detailsInput.value = '';
         
-        // Сохраняем ID пользователя из кнопки
-        if (reportedUserId) {
-            document.getElementById('reportUserId').value = reportedUserId;
+        // УДАЛЯЕМ ПОЛЕ ДЛЯ ID ПОЛЬЗОВАТЕЛЯ ИЗ ФОРМЫ - теперь система сама определяет
+        // Удаляем поле для ID пользователя или скрываем его
+        const userIdInput = document.getElementById('reportUserId');
+        if (userIdInput) {
+            userIdInput.style.display = 'none';
+            userIdInput.disabled = true;
         }
         
         modal.style.display = 'flex';
@@ -903,7 +912,6 @@ async function openReportModal(questionId = null, reportedUserId = null) {
 
 async function submitReport() {
     const questionId = document.getElementById('reportQuestionId')?.value;
-    const reportedUserId = document.getElementById('reportUserId')?.value;
     const reason = document.getElementById('reportReason')?.value;
     const details = document.getElementById('reportDetails')?.value;
     
@@ -920,12 +928,28 @@ async function submitReport() {
     try {
         showNotification('📤 Отправка жалобы...', 'info');
         
+        // ДОБАВЛЯЕМ: получаем ID пользователя из вопроса если есть
+        let reportedUserId = null;
+        if (questionId) {
+            try {
+                const questionResponse = await fetch(`/api/question/${questionId}`);
+                if (questionResponse.ok) {
+                    const question = await questionResponse.json();
+                    if (question.from_user_id) {
+                        reportedUserId = question.from_user_id;
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка получения данных вопроса:', error);
+            }
+        }
+        
         const response = await fetch('/api/user/report', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 userId: userId,
-                reportedUserId: reportedUserId || null,
+                reportedUserId: reportedUserId,
                 questionId: questionId || null,
                 reason: reason,
                 details: details || null
@@ -1093,8 +1117,26 @@ async function getUserIdFromQuestion(questionId) {
 // ========== МАССОВЫЙ ВОПРОС ВСЕМ ПОЛЬЗОВАТЕЛЯМ ==========
 
 function openMassQuestionModal() {
+    // Загружаем количество пользователей
+    loadUserCount();
+    
     document.getElementById('massQuestionModal').style.display = 'flex';
     setTimeout(() => document.getElementById('massQuestionModal').classList.add('active'), 10);
+}
+
+async function loadUserCount() {
+    try {
+        const response = await fetch(`/api/admin/stats?userId=${userId}`);
+        if (response.ok) {
+            const data = await response.json();
+            const totalUsersCount = document.getElementById('totalUsersCount');
+            if (totalUsersCount) {
+                totalUsersCount.textContent = data.stats.totalUsers || '0';
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки количества пользователей:', error);
+    }
 }
 
 async function sendMassQuestion() {
@@ -1115,11 +1157,19 @@ async function sendMassQuestion() {
         return;
     }
     
-    if (!confirm(`Вы уверены, что хотите отправить этот вопрос ВСЕМ ${document.getElementById('totalUsersCount').textContent} пользователям?\n\nВопрос будет отправлен анонимно от имени системы.`)) {
-        return;
-    }
-    
     try {
+        // Загружаем актуальное количество пользователей
+        const statsResponse = await fetch(`/api/admin/stats?userId=${userId}`);
+        let userCount = 'неизвестно';
+        if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            userCount = stats.stats.totalUsers || 'неизвестно';
+        }
+        
+        if (!confirm(`Вы уверены, что хотите отправить этот вопрос ВСЕМ ${userCount} пользователям?\n\nВопрос будет отправлен анонимно от имени системы.`)) {
+            return;
+        }
+    
         showNotification('📤 Отправка массового вопроса...', 'info');
         
         const response = await fetch('/api/admin/send-mass-question', {
@@ -1132,7 +1182,8 @@ async function sendMassQuestion() {
         });
         
         if (response.ok) {
-            showNotification('✅ Массовый вопрос отправлен!', 'success');
+            const data = await response.json();
+            showNotification(`✅ Массовый вопрос отправлен! ${data.stats?.successCount || 0} пользователей получили вопрос`, 'success');
             closeModal('massQuestionModal');
             // Очищаем поле
             document.getElementById('massQuestionText').value = '';
@@ -1487,7 +1538,7 @@ function addAdminModals() {
                                 flex-shrink: 0;
                             ">💡</div>
                             <div style="font-size: 13px; color: #93c5fd;">
-                                <strong>Важно:</strong> Вопрос будет отправлен анонимно от имени системы всем активным пользователям. Используйте для новостей, опросов или поддержания интереса к боту.
+                                <strong>Важно:</strong> Вопрос будет отправлен анонимно от имени системы всем активным пользователей. Используйте для новостей, опросов или поддержания интереса к боту.
                             </div>
                         </div>
                     </div>
@@ -1510,7 +1561,7 @@ function addAdminModals() {
         </div>
         
         <!-- Модалка для кнопки "Пожаловаться" (только для админов) -->
-        ${isAdmin || isSuperAdmin ? `
+        ${(isAdmin || isSuperAdmin) ? `
         <div id="reportActionModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 400px;">
                 <div class="modal-header">
@@ -1605,18 +1656,16 @@ function setupReportHandlers() {
             
             const btn = e.target.closest('.report-btn') || e.target;
             const questionId = btn.getAttribute('data-question-id');
-            const reportedUserId = btn.getAttribute('data-user-id');
             
             console.log('Кнопка "Пожаловаться" нажата:', { 
-                questionId, 
-                reportedUserId 
+                questionId
             });
             
             // Открываем модалку жалобы
             if (isAdmin || isSuperAdmin) {
-                openReportActionModal(questionId, reportedUserId);
+                openReportActionModal(questionId, null);
             } else {
-                openReportModal(questionId, reportedUserId);
+                openReportModal(questionId, null);
             }
             return;
         }
@@ -1641,6 +1690,12 @@ function setupReportHandlers() {
             return;
         }
     });
+    
+    // ИСПРАВЛЕНИЕ: Добавляем обработчик для кнопки "Пожаловаться" в модалке отчетов
+    const submitReportBtn = document.getElementById('submitReportBtn');
+    if (submitReportBtn) {
+        submitReportBtn.addEventListener('click', submitReport);
+    }
 }
 
 async function loadAllData() {
@@ -1744,8 +1799,7 @@ function renderIncomingQuestions(questions) {
                         📤 Поделиться ответом
                     </button>
                     <button class="btn btn-secondary report-btn" 
-                            data-question-id="${q.id}" 
-                            data-user-id="">
+                            data-question-id="${q.id}">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
@@ -1758,8 +1812,7 @@ function renderIncomingQuestions(questions) {
                         ✍️ Ответить
                     </button>
                     <button class="btn btn-secondary report-btn" 
-                            data-question-id="${q.id}" 
-                            data-user-id="">
+                            data-question-id="${q.id}">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
@@ -1804,8 +1857,7 @@ function renderSentQuestions(questions) {
                 </div>
                 <div class="btn-group">
                     <button class="btn btn-secondary report-btn" 
-                            data-question-id="${q.id}" 
-                            data-user-id="${q.to_user_id}">
+                            data-question-id="${q.id}">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
@@ -1815,8 +1867,7 @@ function renderSentQuestions(questions) {
             ` : `
                 <div class="btn-group">
                     <button class="btn btn-secondary report-btn" 
-                            data-question-id="${q.id}" 
-                            data-user-id="${q.to_user_id}">
+                            data-question-id="${q.id}">
                         ⚠️ Пожаловаться
                     </button>
                     <button class="btn btn-danger" onclick="deleteQuestion(${q.id})">
