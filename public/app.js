@@ -94,7 +94,7 @@ async function showAccessRestrictions() {
                         <button class="btn btn-primary" onclick="acceptTOS()">
                             ✅ Принять соглашение
                         </button>
-                        <button class="btn btn-secondary" onclick="openTOSinBot()">
+                        <button class="btn btn-secondary" onclick="openTOSDetails()">
                             📄 Подробнее
                         </button>
                     </div>
@@ -138,54 +138,104 @@ async function acceptTOS() {
     }
 }
 
-function openTOSinBot() {
-    if (tg && tg.openLink) {
-        // Открываем бота для ознакомления с соглашением
-        tg.openLink(`https://t.me/${botUsername}?start=tos_${userId}`);
+function openTOSDetails() {
+    const fullTOS = `
+        <div class="tos-full-content" style="max-width: 800px; padding: 20px;">
+            <h2 style="text-align: center; margin-bottom: 30px; color: var(--tg-accent-color);">📜 ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ</h2>
+            
+            <div style="background: var(--tg-input-bg); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: var(--tg-text-color); margin-bottom: 15px;">1. Общие положения</h3>
+                <p>1.1. Настоящее Пользовательское соглашение регулирует отношения между администрацией сервиса "Анонимные вопросы" и пользователями.</p>
+                <p>1.2. Используя сервис, вы подтверждаете, что вам исполнилось 16 лет.</p>
+                <p>1.3. Сервис предоставляет возможность отправки и получения анонимных вопросов.</p>
+            </div>
+            
+            <div style="background: var(--tg-input-bg); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: var(--tg-text-color); margin-bottom: 15px;">2. Права и обязанности пользователя</h3>
+                <p>2.1. Пользователь обязуется:</p>
+                <ul style="padding-left: 20px; margin-bottom: 15px;">
+                    <li>Не нарушать законодательство РФ</li>
+                    <li>Не отправлять угрозы, оскорбления и материалы экстремистского содержания</li>
+                    <li>Не распространять спам, вирусы и вредоносное ПО</li>
+                    <li>Не выдавать себя за других лиц</li>
+                    <li>Не нарушать права интеллектуальной собственности</li>
+                </ul>
+                <p>2.2. Пользователь имеет право:</p>
+                <ul style="padding-left: 20px;">
+                    <li>Отправлять анонимные вопросы другим пользователям</li>
+                    <li>Получать и отвечать на вопросы</li>
+                    <li>Удалять свои вопросы и ответы</li>
+                    <li>Подавать жалобы на нарушителей</li>
+                </ul>
+            </div>
+            
+            <div style="background: var(--tg-input-bg); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: var(--tg-text-color); margin-bottom: 15px;">3. Анонимность и конфиденциальность</h3>
+                <p>3.1. Отправители вопросов остаются полностью анонимными для получателей.</p>
+                <p>3.2. Администрация видит статистику использования, но не имеет доступа к содержимому приватных сообщений.</p>
+                <p>3.3. Вопросы и ответы хранятся на сервере для обеспечения работы сервиса и модерации.</p>
+                <p>3.4. Администрация обязуется не передавать персональные данные третьим лицам.</p>
+            </div>
+            
+            <div style="background: var(--tg-input-bg); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: var(--tg-text-color); margin-bottom: 15px;">4. Модерация и блокировки</h3>
+                <p>4.1. Администрация имеет право блокировать пользователей за нарушения правил.</p>
+                <p>4.2. Блокировка может быть временной (от 1 часа до 30 дней) или постоянной.</p>
+                <p>4.3. Пользователи могут подавать жалобы на вопросы или других пользователей.</p>
+                <p>4.4. Администрация оставляет за собой право удалять контент без предупреждения.</p>
+            </div>
+            
+            <div style="background: var(--tg-input-bg); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: var(--tg-text-color); margin-bottom: 15px;">5. Ответственность</h3>
+                <p>5.1. Пользователь несет полную ответственность за содержание своих вопросов и ответов.</p>
+                <p>5.2. Администрация не несет ответственности за контент, созданный пользователями.</p>
+                <p>5.3. Сервис предоставляется "как есть" без гарантий стабильной работы.</p>
+            </div>
+            
+            <div style="background: rgba(46, 141, 230, 0.1); border-radius: 10px; padding: 20px; border-left: 4px solid var(--tg-accent-color);">
+                <h3 style="color: var(--tg-accent-color); margin-bottom: 10px;">⚠️ Важное примечание:</h3>
+                <p>Нажимая "Принять соглашение", вы подтверждаете, что ознакомились со всеми пунктами и согласны с ними.</p>
+                <p>Соглашение может быть изменено администрацией. Актуальная версия всегда доступна в приложении.</p>
+            </div>
+        </div>
+    `;
+    
+    // Создаем модальное окно с полным текстом соглашения
+    const modalHTML = `
+        <div id="tosFullModal" class="modal" style="display: flex;">
+            <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
+                <div class="modal-header">
+                    <h3><span>📜</span> Полный текст соглашения</h3>
+                    <button class="btn-close" onclick="closeModal('tosFullModal')">×</button>
+                </div>
+                <div class="modal-body" style="padding: 0;">
+                    <div style="height: 60vh; overflow-y: auto; padding: 20px;">
+                        ${fullTOS}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('tosFullModal')">
+                        Закрыть
+                    </button>
+                    <button class="btn btn-primary" onclick="acceptTOS(); closeModal('tosFullModal');">
+                        ✅ Принять соглашение
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Добавляем модалку в DOM
+    if (!document.getElementById('tosFullModal')) {
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     } else {
-        // Показываем соглашение в попапе
-        const tosText = `📜 *ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ*\n\n` +
-            `*1. Возрастное ограничение*\n` +
-            `• Вы должны быть старше 16 лет\n\n` +
-            `*2. Запрещенный контент*\n` +
-            `• Угрозы, оскорбления, домогательства\n` +
-            `• Разжигание ненависти, дискриминация\n` +
-            `• Спам, реклама, мошенничество\n` +
-            `• Порнографический контент\n\n` +
-            `*3. Ваша ответственность*\n` +
-            `• Вы отвечаете за свой контент\n` +
-            `• Запрещено выдавать себя за других\n\n` +
-            `*4. Анонимность*\n` +
-            `• Отправители остаются анонимными\n` +
-            `• Администраторы видят статистику\n` +
-            `• Вопросы хранятся для модерации\n\n` +
-            `*5. Модерация*\n` +
-            `• Админы могут блокировать пользователей\n` +
-            `• Могут удалять вопросы и ответы\n` +
-            `• Пользователи могут жаловаться\n\n` +
-            `*6. Согласие*\n` +
-            `Используя сервис, вы соглашаетесь с правилами.`;
-        
-        if (tg && tg.showPopup) {
-            tg.showPopup({
-                title: '📜 Пользовательское соглашение',
-                message: tosText,
-                buttons: [
-                    { type: 'ok', text: '✅ Принять' },
-                    { type: 'close', text: '✖️ Закрыть' }
-                ]
-            }, function(buttonId) {
-                if (buttonId === 'ok') {
-                    acceptTOS();
-                }
-            });
-        } else {
-            // Для десктопа
-            if (confirm(tosText + '\n\nПринять пользовательское соглашение?')) {
-                acceptTOS();
-            }
-        }
+        document.getElementById('tosFullModal').style.display = 'flex';
     }
+    
+    // Показываем модалку
+    setTimeout(() => {
+        document.getElementById('tosFullModal').classList.add('active');
+    }, 10);
 }
 
 // ========== АДМИН ПАНЕЛЬ ==========
@@ -287,6 +337,9 @@ async function loadAdminPanel() {
                     <button class="btn btn-primary" onclick="openUserManagementModal()">
                         👤 Управление пользователями
                     </button>
+                    <button class="btn btn-warning" onclick="openMassQuestionModal()">
+                        📢 Анонимный вопрос всем
+                    </button>
                     <button class="btn btn-danger" onclick="openDataDeletionModal()">
                         🗑️ Удаление данных
                     </button>
@@ -381,7 +434,7 @@ function renderUsersList(users) {
                             <td>
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                                     ${isSuperAdmin ? `
-                                    <button class="btn-action" onclick="openBlockUserModal(${user.telegram_id}, '${(user.username || user.first_name || 'Пользователь').replace(/'/g, "\\'")}')" 
+                                    <button class="btn-action" onclick="${isBlocked ? 'unblockUser(' + user.telegram_id + ')' : 'openBlockUserModal(' + user.telegram_id + ', \"' + (user.username || user.first_name || 'Пользователь').replace(/'/g, "\\'") + '\")'}" 
                                             style="background: ${isBlocked ? 'var(--tg-success)' : 'var(--tg-danger)'}; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px; border: none; cursor: pointer; margin: 2px;">
                                         ${isBlocked ? '✅ Разблокировать' : '🚫 Блокировать'}
                                     </button>
@@ -439,6 +492,7 @@ function renderReportsList(reports) {
                     ${report.question_text ? `
                     <div style="margin: 10px 0; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 6px;">
                         <strong>Вопрос:</strong> ${report.question_text.substring(0, 100)}${report.question_text.length > 100 ? '...' : ''}
+                        ${report.question_id ? `<div style="font-size: 11px; color: var(--tg-secondary-text); margin-top: 5px;">ID вопроса: ${report.question_id}</div>` : ''}
                     </div>
                     ` : ''}
                     
@@ -635,6 +689,42 @@ async function blockUser() {
     }
 }
 
+async function unblockUser(targetUserId) {
+    // Проверка прав
+    if (!isSuperAdmin) {
+        showNotification('❌ Недостаточно прав. Требуется суперадмин.', 'error');
+        return;
+    }
+    
+    if (!confirm('Вы уверены, что хотите разблокировать пользователя?')) {
+        return;
+    }
+    
+    try {
+        showNotification('🔄 Разблокировка пользователя...', 'info');
+        
+        const response = await fetch('/api/admin/unblock-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adminId: userId,
+                userId: targetUserId
+            })
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Пользователь разблокирован', 'success');
+            await loadAdminPanel();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка разблокировки:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
 async function blockFromReport() {
     // Проверка прав
     if (!isSuperAdmin) {
@@ -790,14 +880,17 @@ async function openReportModal(questionId = null, reportedUserId = null) {
             reasonsList.appendChild(reasonItem);
         });
         
-        // Сбрасываем форму
+        // Сбрасываем форму (УДАЛЯЕМ ПОЛЕ ДЛЯ ID ПОЛЬЗОВАТЕЛЯ)
         const questionIdInput = document.getElementById('reportQuestionId');
-        const userIdInput = document.getElementById('reportUserId');
         const detailsInput = document.getElementById('reportDetails');
         
         if (questionIdInput) questionIdInput.value = questionId || '';
-        if (userIdInput) userIdInput.value = reportedUserId || '';
         if (detailsInput) detailsInput.value = '';
+        
+        // Сохраняем ID пользователя из кнопки
+        if (reportedUserId) {
+            document.getElementById('reportUserId').value = reportedUserId;
+        }
         
         modal.style.display = 'flex';
         setTimeout(() => modal.classList.add('active'), 10);
@@ -994,6 +1087,62 @@ async function getUserIdFromQuestion(questionId) {
         return null;
     } catch (error) {
         return null;
+    }
+}
+
+// ========== МАССОВЫЙ ВОПРОС ВСЕМ ПОЛЬЗОВАТЕЛЯМ ==========
+
+function openMassQuestionModal() {
+    document.getElementById('massQuestionModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('massQuestionModal').classList.add('active'), 10);
+}
+
+async function sendMassQuestion() {
+    const questionText = document.getElementById('massQuestionText').value.trim();
+    
+    if (!questionText) {
+        showNotification('Введите текст вопроса', 'warning');
+        return;
+    }
+    
+    if (questionText.length < 5) {
+        showNotification('Вопрос слишком короткий (минимум 5 символов)', 'warning');
+        return;
+    }
+    
+    if (questionText.length > 1000) {
+        showNotification('Вопрос слишком длинный (максимум 1000 символов)', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Вы уверены, что хотите отправить этот вопрос ВСЕМ ${document.getElementById('totalUsersCount').textContent} пользователям?\n\nВопрос будет отправлен анонимно от имени системы.`)) {
+        return;
+    }
+    
+    try {
+        showNotification('📤 Отправка массового вопроса...', 'info');
+        
+        const response = await fetch('/api/admin/send-mass-question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adminId: userId,
+                questionText: questionText
+            })
+        });
+        
+        if (response.ok) {
+            showNotification('✅ Массовый вопрос отправлен!', 'success');
+            closeModal('massQuestionModal');
+            // Очищаем поле
+            document.getElementById('massQuestionText').value = '';
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка сервера');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки массового вопроса:', error);
+        showNotification('❌ ' + error.message, 'error');
     }
 }
 
@@ -1303,6 +1452,63 @@ function addAdminModals() {
             </div>
         </div>
         
+        <!-- Модалка массового вопроса -->
+        <div id="massQuestionModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h3><span>📢</span> Анонимный вопрос всем</h3>
+                    <button class="btn-close" onclick="closeModal('massQuestionModal')">×</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 10px; color: var(--tg-text-color); font-weight: 600;">
+                            Текст вопроса для всех пользователей:
+                        </label>
+                        <textarea id="massQuestionText" 
+                                  style="width: 100%; padding: 12px; border: 1px solid var(--tg-border-color); border-radius: 10px; background: var(--tg-input-bg); color: var(--tg-text-color); min-height: 120px;"
+                                  placeholder="Введите вопрос, который будет отправлен всем пользователям..."></textarea>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--tg-secondary-text);">
+                            <span id="massQuestionCharCount">0</span>/1000 символов
+                        </div>
+                    </div>
+                    
+                    <div style="background: rgba(46, 141, 230, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 3px solid var(--tg-accent-color);">
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <div style="
+                                width: 28px;
+                                height: 28px;
+                                background: var(--tg-accent-color);
+                                border-radius: 50%;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                color: white;
+                                font-size: 14px;
+                                flex-shrink: 0;
+                            ">💡</div>
+                            <div style="font-size: 13px; color: #93c5fd;">
+                                <strong>Важно:</strong> Вопрос будет отправлен анонимно от имени системы всем активным пользователям. Используйте для новостей, опросов или поддержания интереса к боту.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; padding: 10px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 14px; color: var(--tg-warning);">
+                            Всего пользователей: <span id="totalUsersCount" style="font-weight: bold;">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('massQuestionModal')">
+                        Отмена
+                    </button>
+                    <button class="btn btn-warning" onclick="sendMassQuestion()">
+                        📢 Отправить всем
+                    </button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Модалка для кнопки "Пожаловаться" (только для админов) -->
         ${isAdmin || isSuperAdmin ? `
         <div id="reportActionModal" class="modal" style="display: none;">
@@ -1378,6 +1584,16 @@ function addAdminModals() {
     `;
     
     document.body.insertAdjacentHTML('beforeend', modals);
+    
+    // Добавляем обработчик для счетчика символов в массовом вопросе
+    const massQuestionText = document.getElementById('massQuestionText');
+    const massQuestionCharCount = document.getElementById('massQuestionCharCount');
+    
+    if (massQuestionText && massQuestionCharCount) {
+        massQuestionText.addEventListener('input', function() {
+            massQuestionCharCount.textContent = this.value.length;
+        });
+    }
 }
 
 function setupReportHandlers() {
@@ -1981,12 +2197,15 @@ window.submitReport = submitReport;
 window.closeReportModal = closeReportModal;
 window.acceptTOS = acceptTOS;
 window.openTelegramChannel = openTelegramChannel;
-window.openTOSinBot = openTOSinBot;
+window.openTOSDetails = openTOSDetails;
 window.openUserManagementModal = openUserManagementModal;
 window.openDataDeletionModal = openDataDeletionModal;
 window.openBlockUserModal = openBlockUserModal;
 window.openBlockFromReportModal = openBlockFromReportModal;
+window.openMassQuestionModal = openMassQuestionModal;
+window.sendMassQuestion = sendMassQuestion;
 window.blockUser = blockUser;
+window.unblockUser = unblockUser;
 window.blockFromReport = blockFromReport;
 window.updateReportStatus = updateReportStatus;
 window.deleteUserData = deleteUserData;

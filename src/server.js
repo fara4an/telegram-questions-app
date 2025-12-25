@@ -752,6 +752,101 @@ app.post('/api/admin/update-report', async (req, res) => {
     }
 });
 
+// Массовый вопрос всем пользователям
+app.post('/api/admin/send-mass-question', async (req, res) => {
+    try {
+        const { adminId, questionText } = req.body;
+        
+        if (!adminId || !questionText) {
+            return res.status(400).json({ error: 'Не указаны обязательные параметры' });
+        }
+        
+        const adminResult = await db.query(
+            `SELECT is_super_admin FROM users WHERE telegram_id = $1`,
+            [adminId]
+        );
+        
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].is_super_admin) {
+            return res.status(403).json({ error: 'Доступ запрещен. Требуются права суперадмина.' });
+        }
+        
+        // Получаем всех активных пользователей (подписанных и принявших TOS)
+        const usersResult = await db.query(`
+            SELECT telegram_id FROM users 
+            WHERE subscribed_channel = TRUE 
+            AND agreed_tos = TRUE 
+            AND is_blocked = FALSE
+        `);
+        
+        const users = usersResult.rows;
+        let successCount = 0;
+        let errorCount = 0;
+        
+        // Отправляем вопрос каждому пользователю
+        for (const user of users) {
+            try {
+                await db.query(
+                    `INSERT INTO questions (from_user_id, to_user_id, text, is_anonymous, source) 
+                     VALUES ($1, $2, $3, TRUE, 'mass')`,
+                    [null, user.telegram_id, questionText]
+                );
+                
+                // Отправляем уведомление пользователю
+                try {
+                    const questionPreview = questionText.length > 60 ? 
+                        questionText.substring(0, 60) + '...' : questionText;
+                    
+                    await bot.telegram.sendMessage(user.telegram_id,
+                        `🎉 *Новый анонимный вопрос от системы!*\n\n` +
+                        `💬 *Вопрос:*\n"${questionPreview}"\n\n` +
+                        `👇 *Открой приложение, чтобы ответить:*`,
+                        {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [[
+                                    {
+                                        text: '📱 ОТКРЫТЬ ПРИЛОЖЕНИЕ',
+                                        web_app: { url: WEB_APP_URL }
+                                    }
+                                ]]
+                            }
+                        }
+                    );
+                    
+                    successCount++;
+                } catch (sendError) {
+                    console.error(`Ошибка отправки уведомления пользователю ${user.telegram_id}:`, sendError.message);
+                    errorCount++;
+                }
+                
+            } catch (error) {
+                console.error(`Ошибка сохранения вопроса для пользователя ${user.telegram_id}:`, error.message);
+                errorCount++;
+            }
+        }
+        
+        // Логируем отправку массового вопроса
+        await db.query(
+            `INSERT INTO admin_logs (admin_id, action, details) VALUES ($1, 'mass_question', $2)`,
+            [adminId, `Отправлен массовый вопрос: "${questionText.substring(0, 100)}..."`]
+        );
+        
+        res.json({
+            success: true,
+            message: `Массовый вопрос отправлен ${successCount} пользователям`,
+            stats: {
+                totalUsers: users.length,
+                successCount,
+                errorCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error sending mass question:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ========== ПОЛЬЗОВАТЕЛЬСКИЕ API ==========
 
 app.get('/api/user/access/:userId', async (req, res) => {
